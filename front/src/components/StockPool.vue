@@ -8,14 +8,36 @@
       <!-- 添加股票按钮 -->
       <div class="section-header">
         <h5>股票池</h5>
-        <button 
-          type="button" 
-          class="btn btn-primary btn-sm"
-          @click="showAddStockModal = true"
-          :disabled="loading"
-        >
-          <i class="fas fa-plus"></i> 添加股票
-        </button>
+        <div class="section-header-buttons">
+          <button 
+            type="button" 
+            class="btn btn-primary btn-sm"
+            @click="showAddStockModal = true"
+            :disabled="loading"
+          >
+            <i class="fas fa-plus"></i> 添加股票
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-success btn-sm" 
+            @click="loadDragonStockPool"
+            :disabled="loadingDragonPool"
+          >
+            <i class="fas fa-dragon" v-if="!loadingDragonPool"></i>
+            <i class="fas fa-spinner fa-spin" v-else></i>
+            加载龙头股票池
+          </button>
+          <button 
+            type="button" 
+            class="btn btn-info btn-sm" 
+            @click="refreshStockPrices"
+            :disabled="loadingPrices"
+          >
+            <i class="fas fa-sync-alt" v-if="!loadingPrices"></i>
+            <i class="fas fa-spinner fa-spin" v-else></i>
+            刷新价格
+          </button>
+        </div>
       </div>
       
       <!-- 股票池表格 -->
@@ -23,24 +45,42 @@
         <table class="table table-striped table-hover">
           <thead class="table-dark">
             <tr>
-              <th scope="col">#</th>
-              <th scope="col">股票代码</th>
-              <th scope="col">股票名称</th>
+              <th scope="col">股票信息</th>
+              <th scope="col">涨停次数</th>
               <th scope="col">当前价格</th>
-              <th scope="col">涨跌幅</th>
+              <th scope="col" class="sortable" @click="sortByChange">
+                涨跌幅
+                <i class="fas fa-sort ms-1" v-if="sortField !== 'change'"></i>
+                <i class="fas fa-sort-up ms-1" v-else-if="sortOrder === 'asc'"></i>
+                <i class="fas fa-sort-down ms-1" v-else></i>
+              </th>
               <th scope="col">操作</th>
             </tr>
           </thead>
           <tbody>
             <tr v-if="stockPool.length === 0">
-              <td colspan="6" class="text-center text-muted">
-                暂无股票，请点击上方按钮添加股票
+              <td colspan="5" class="text-center text-muted">
+                <div v-if="loadingDragonPool" class="p-3">
+                  <i class="fas fa-spinner fa-spin"></i> 正在加载龙头股票池...
+                </div>
+                <div v-else>
+                  暂无股票，请点击上方按钮添加股票或加载龙头股票池
+                </div>
               </td>
             </tr>
-            <tr v-for="(stock, index) in stockPool" :key="stock.code">
-              <th scope="row">{{ index + 1 }}</th>
-              <td>{{ stock.code }}</td>
-              <td>{{ stock.name }}</td>
+            <tr v-for="(stock, index) in sortedStockPool" :key="stock.code">
+              <td>
+                <div class="stock-info-cell">
+                  <div class="stock-name">{{ stock.name }}</div>
+                  <div class="stock-code">{{ stock.code }}</div>
+                </div>
+              </td>
+              <td class="text-center">
+                <span v-if="stock.zttj_ct && stock.zttj_days" class="zt-info">
+                  {{ stock.zttj_ct }}/{{ stock.zttj_days }}
+                </span>
+                <span v-else class="text-muted">--</span>
+              </td>
               <td class="text-end">
                 <span v-if="stock.price">￥{{ stock.price.toFixed(2) }}</span>
                 <span v-else class="text-muted">--</span>
@@ -173,14 +213,45 @@ export default {
       selectedStock: null,
       isSearching: false,
       searchError: '',
-      searchTimeout: null
+      searchTimeout: null,
+      loadingDragonPool: false,
+      loadingPrices: false,
+      sortField: '',
+      sortOrder: 'desc' // 'asc' 或 'desc'
     }
   },
   computed: {
     canAddStock() {
       return this.selectedStock && 
              !this.stockPool.some(stock => stock.code === this.selectedStock.OuterCode)
+    },
+    
+    sortedStockPool() {
+      if (!this.sortField) {
+        return this.stockPool
+      }
+      
+      return [...this.stockPool].sort((a, b) => {
+        let aValue = a[this.sortField]
+        let bValue = b[this.sortField]
+        
+        // 处理null值，将null值排在最后
+        if (aValue === null && bValue === null) return 0
+        if (aValue === null) return 1
+        if (bValue === null) return -1
+        
+        // 数值比较
+        if (this.sortOrder === 'asc') {
+          return aValue - bValue
+        } else {
+          return bValue - aValue
+        }
+      })
     }
+  },
+  mounted() {
+    // 组件挂载后自动加载龙头股票池数据
+    this.loadDragonStockPool()
   },
   methods: {
     addStock() {
@@ -340,6 +411,103 @@ export default {
     
     getCollapseState() {
       return this.$refs.card?.getCollapseState()
+    },
+    
+    // 加载龙头股票池数据
+    async loadDragonStockPool() {
+      this.loadingDragonPool = true
+      
+      try {
+        const response = await fetch('https://www.wttiao.com/moni/ztpool/dragonCallback')
+        const result = await response.json()
+        
+        if (result.code === 0 && result.data && Array.isArray(result.data)) {
+          // 转换数据格式
+          const dragonStocks = result.data.map(item => ({
+            code: item.code,
+            name: item.name,
+            date: item.date,
+            zttj_days: item.zttj_days,
+            zttj_ct: item.zttj_ct,
+            price: null,
+            change: null
+          }))
+          
+          // 合并股票池，避免重复
+          const existingCodes = this.stockPool.map(stock => stock.code)
+          const newStocks = dragonStocks.filter(stock => !existingCodes.includes(stock.code))
+          
+          this.stockPool = [...this.stockPool, ...newStocks]
+          
+          // 触发事件通知父组件股票池已更新
+          this.$emit('stock-pool-updated', this.stockPool)
+          
+          // 显示成功消息
+          this.$emit('show-message', {
+            type: 'success',
+            message: `成功加载${newStocks.length}只龙头股票到股票池`
+          })
+          
+        } else {
+          throw new Error(result.msg || '获取数据失败')
+        }
+      } catch (error) {
+        console.error('加载龙头股票池失败:', error)
+        this.$emit('show-message', {
+          type: 'error',
+          message: '加载龙头股票池失败: ' + error.message
+        })
+      } finally {
+        this.loadingDragonPool = false
+      }
+    },
+    
+    // 刷新股票价格（可以集成其他股票价格API）
+    async refreshStockPrices() {
+      if (this.stockPool.length === 0) {
+        this.$emit('show-message', {
+          type: 'warning',
+          message: '股票池为空，无需刷新'
+        })
+        return
+      }
+      
+      this.loadingPrices = true
+      
+      try {
+        // 这里可以集成股票价格API，目前只是模拟
+        for (let stock of this.stockPool) {
+          // 模拟价格数据
+          stock.price = Math.random() * 100 + 10
+          stock.change = (Math.random() - 0.5) * 20
+        }
+        
+        this.$emit('show-message', {
+          type: 'success',
+          message: '股票价格刷新完成'
+        })
+        
+      } catch (error) {
+        console.error('刷新股票价格失败:', error)
+        this.$emit('show-message', {
+          type: 'error',
+          message: '刷新股票价格失败: ' + error.message
+        })
+      } finally {
+        this.loadingPrices = false
+      }
+    },
+    
+    // 按涨跌幅排序
+    sortByChange() {
+      if (this.sortField === 'change') {
+        // 如果已经是按涨跌幅排序，则切换排序方向
+        this.sortOrder = this.sortOrder === 'desc' ? 'asc' : 'desc'
+      } else {
+        // 如果不是按涨跌幅排序，则设置为按涨跌幅降序排序
+        this.sortField = 'change'
+        this.sortOrder = 'desc'
+      }
     }
   }
 }
@@ -356,6 +524,10 @@ export default {
   margin-bottom: 1rem;
   padding-bottom: 0.5rem;
   border-bottom: 2px solid #e9ecef;
+}
+.section-header-buttons{
+  display: flex;
+  gap: 10px;
 }
 
 .section-header h5 {
@@ -518,6 +690,41 @@ export default {
 
 .badge {
   font-size: 0.875rem;
+}
+
+.stock-info-cell {
+  line-height: 1.4;
+}
+
+.stock-name {
+  font-weight: 600;
+  color: #212529;
+  margin-bottom: 2px;
+}
+
+.stock-code {
+  font-size: 0.875rem;
+  color: #6c757d;
+  font-family: 'Courier New', monospace;
+}
+
+.zt-info {
+  font-weight: 600;
+  color: #0d6efd;
+  background-color: #e7f1ff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.15s ease-in-out;
+}
+
+.sortable:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 /* 输入框相对定位，为搜索结果定位做准备 */

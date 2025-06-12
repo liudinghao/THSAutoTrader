@@ -3,13 +3,6 @@
     <h1 class="text-center">自动化控制面板</h1>
     <div class="row mt-4">
       <div class="col-md-6">
-        <WindowControl 
-          :loading="loading" 
-          :result="result"
-          @api-call="callApi"
-        />
-      </div>
-      <div class="col-md-6">
         <TradingService 
           :loading="loading" 
           @execute-trade="executeTrade"
@@ -19,6 +12,13 @@
         <StockPool 
           :loading="loading" 
           @stock-pool-updated="updateStockPool"
+        />
+      </div>
+      <div class="col-md-6">
+        <WindowControl 
+          :loading="loading" 
+          :result="result"
+          @api-call="callApi"
         />
       </div>
     </div>
