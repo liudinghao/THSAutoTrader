@@ -125,10 +125,6 @@ export default {
 </script>
 
 <style scoped>
-.window-control-card {
-  margin: 20px;
-}
-
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -189,7 +185,7 @@ export default {
 }
 
 :deep(.el-card__body) {
-  padding: 16px;
+  padding: 10px;
 }
 
 @media (max-width: 768px) {

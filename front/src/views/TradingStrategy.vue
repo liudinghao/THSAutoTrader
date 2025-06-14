@@ -186,10 +186,6 @@ export default {
 </script>
 
 <style scoped>
-.strategy-card {
-  margin: 20px;
-}
-
 .card-header {
   display: flex;
   justify-content: space-between;

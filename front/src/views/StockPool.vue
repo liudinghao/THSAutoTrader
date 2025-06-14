@@ -3,103 +3,83 @@
     <template #header>
       <div class="card-header">
         <span class="title">股票池管理</span>
-        <div class="header-actions">
-          <el-button 
-            type="success" 
-            :icon="Trophy"
-            @click="loadDragonStockPool"
-            :loading="loadingDragonPool"
-          >
-            加载龙头股票池
-          </el-button>
-        </div>
       </div>
     </template>
 
-    <!-- 股票池表格 -->
-    <el-table
-      :data="sortedStockPool"
-      style="width: 100%"
-      v-loading="loading"
-      border
-      stripe
-      @row-click="handleRowClick"
-    >
-      <el-table-column prop="name" label="股票信息" min-width="200">
-        <template #default="{ row }">
-          <div class="stock-info">
-            <span class="stock-name">{{ row.name }}</span>
-            <span class="stock-code">{{ row.code }}</span>
-          </div>
-        </template>
-      </el-table-column>
-      
-      <el-table-column label="涨速" width="120" align="right" sortable>
-        <template #default="{ row }">
-          <div v-if="row.speed !== null">
-            <el-tag
-              :type="row.speed > 0 ? 'success' : row.speed < 0 ? 'danger' : 'info'"
-              size="small"
-            >
-              {{ row.speed > 0 ? '+' : '' }}{{ row.speed?.toFixed(2) }}%
+    <div class="tables-container">
+      <!-- 使用v-for循环渲染两张表 -->
+      <el-table
+        v-for="(tableData, index) in [leftTableData, rightTableData]"
+        :key="index"
+        :data="tableData"
+        style="width: 100%"
+        v-loading="loading"
+        border
+        stripe
+        @row-click="handleRowClick"
+      >
+        <el-table-column prop="name" label="股票信息" min-width="65">
+          <template #default="{ row }">
+            <div class="stock-info">
+              <span class="stock-name">{{ row.name }}</span>
+              <span class="stock-code">{{ row.code }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="涨速" min-width="65" align="right" sortable>
+          <template #default="{ row }">
+            <div v-if="row.speed !== null">
+              <el-tag
+                :type="row.speed > 0 ? 'success' : row.speed < 0 ? 'danger' : 'info'"
+                size="small"
+              >
+                {{ row.speed > 0 ? '+' : '' }}{{ row.speed?.toFixed(2) }}%
+              </el-tag>
+            </div>
+            <span v-else>--</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column prop="zttj_ct" label="涨停次数" min-width="60" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="row.zttj_ct && row.zttj_days" type="info">
+              {{ row.zttj_ct }}/{{ row.zttj_days }}
             </el-tag>
-          </div>
-          <span v-else>--</span>
-        </template>
-      </el-table-column>
-      
-      <el-table-column prop="zttj_ct" label="涨停次数" width="120" align="center">
-        <template #default="{ row }">
-          <el-tag v-if="row.zttj_ct && row.zttj_days" type="info">
-            {{ row.zttj_ct }}/{{ row.zttj_days }}
-          </el-tag>
-          <span v-else>--</span>
-        </template>
-      </el-table-column>
-      
-      <el-table-column label="现价/涨跌幅" min-width="150" align="right" sortable>
-        <template #default="{ row }">
-          <div v-if="row.price !== null">
-            <span class="price">￥{{ row.price.toFixed(2) }}</span>
-            <el-tag
-              :type="row.change > 0 ? 'success' : row.change < 0 ? 'danger' : 'info'"
-              size="small"
-              class="ml-2"
-            >
-              {{ row.change > 0 ? '+' : '' }}{{ row.change?.toFixed(2) }}%
-            </el-tag>
-          </div>
-          <span v-else>--</span>
-        </template>
-      </el-table-column>
-      
-      <el-table-column label="K线图" min-width="250" align="center">
-        <template #default="{ row }">
-          <stock-k-line :code="row.code" />
-        </template>
-      </el-table-column>
-      
-      <el-table-column label="操作" width="100" align="center" fixed="right">
-        <template #default="{ $index }">
-          <el-button
-            type="danger"
-            :icon="Delete"
-            @click="removeStock($index)"
-            :disabled="loading"
-            size="small"
-          >
-            删除
-          </el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+            <span v-else>--</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="现价/涨跌幅" min-width="80" align="right" sortable>
+          <template #default="{ row }">
+            <div v-if="row.price !== null">
+              <span class="price">￥{{ row.price.toFixed(2) }}</span>
+              <el-tag
+                :type="row.change > 0 ? 'success' : row.change < 0 ? 'danger' : 'info'"
+                size="small"
+                class="ml-2"
+              >
+                {{ row.change > 0 ? '+' : '' }}{{ row.change?.toFixed(2) }}%
+              </el-tag>
+            </div>
+            <span v-else>--</span>
+          </template>
+        </el-table-column>
+        
+        <el-table-column label="K线图" min-width="160" align="center">
+          <template #default="{ row }">
+            <stock-k-line :code="row.code" />
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
   </el-card>
 </template>
 
 <script>
 import { Delete, Trophy } from '@element-plus/icons-vue'
 import StockKLine from '../components/StockKLine.vue'
-import { jumpToQuote } from '../utils/quoteApi'
+import { jumpToQuote, registerPush, unregisterPush } from '../utils/quoteApi'
 
 export default {
   name: 'StockPool',
@@ -120,7 +100,8 @@ export default {
       loadingDragonPool: false,
       loadingPrices: false,
       sortField: '',
-      sortOrder: 'desc'
+      sortOrder: 'desc',
+      quoteSessionId: null
     }
   },
   created() {
@@ -131,7 +112,24 @@ export default {
       this.refreshStockPrices()
     })
   },
+  beforeUnmount() {
+    // 组件销毁前取消推送
+    if (this.quoteSessionId) {
+      unregisterPush(this.quoteSessionId)
+      this.quoteSessionId = null
+    }
+  },
   computed: {
+    // 计算左侧表格数据
+    leftTableData() {
+      const midPoint = Math.ceil(this.sortedStockPool.length / 2)
+      return this.sortedStockPool.slice(0, midPoint)
+    },
+    // 计算右侧表格数据
+    rightTableData() {
+      const midPoint = Math.ceil(this.sortedStockPool.length / 2)
+      return this.sortedStockPool.slice(midPoint)
+    },
     sortedStockPool() {
       if (!this.sortField) {
         return this.stockPool
@@ -150,8 +148,10 @@ export default {
     }
   },
   methods: {
-    removeStock(index) {
-      this.stockPool.splice(index, 1)
+    // 修改删除方法，增加表格位置参数
+    removeStock(index, tablePosition) {
+      const actualIndex = tablePosition === 'left' ? index : index + this.leftTableData.length
+      this.stockPool.splice(actualIndex, 1)
     },
     
     // 外部调用方法，用于获取股票池数据
@@ -169,39 +169,9 @@ export default {
       this.loadingDragonPool = true
       
       try {
-        const response = await fetch('https://www.wttiao.com/moni/ztpool/dragonCallback')
-        const result = await response.json()
-        
-        if (result.code === 0 && result.data && Array.isArray(result.data)) {
-          // 转换数据格式
-          const dragonStocks = result.data.map(item => ({
-            code: item.code,
-            name: item.name,
-            date: item.date,
-            zttj_days: item.zttj_days,
-            zttj_ct: item.zttj_ct,
-            price: null,
-            change: null
-          }))
-          
-          // 合并股票池，避免重复
-          const existingCodes = this.stockPool.map(stock => stock.code)
-          const newStocks = dragonStocks.filter(stock => !existingCodes.includes(stock.code))
-          
-          this.stockPool = [...this.stockPool, ...newStocks]
-          
-          // 触发事件通知父组件股票池已更新
-          this.$emit('stock-pool-updated', this.stockPool)
-          
-          // 显示成功消息
-          this.$emit('show-message', {
-            type: 'success',
-            message: `成功加载${newStocks.length}只龙头股票到股票池`
-          })
-          
-        } else {
-          throw new Error(result.msg || '获取数据失败')
-        }
+        const dragonStocks = await this.fetchDragonStocks()
+        await this.updateStockPool(dragonStocks)
+        await this.registerQuotePush()
       } catch (error) {
         console.error('加载龙头股票池失败:', error)
         this.$emit('show-message', {
@@ -211,6 +181,76 @@ export default {
       } finally {
         this.loadingDragonPool = false
       }
+    },
+
+    // 获取龙头股票数据
+    async fetchDragonStocks() {
+      const response = await fetch('https://www.wttiao.com/moni/ztpool/dragonCallback')
+      const result = await response.json()
+      
+      if (result.code === 0 && result.data && Array.isArray(result.data)) {
+        return result.data.map(item => ({
+          code: item.code,
+          name: item.name,
+          date: item.date,
+          zttj_days: item.zttj_days,
+          zttj_ct: item.zttj_ct,
+          price: null,
+          change: null
+        }))
+      }
+      throw new Error(result.msg || '获取数据失败')
+    },
+
+    // 更新股票池数据
+    async updateStockPool(dragonStocks) {
+      // 合并股票池，避免重复
+      const existingCodes = this.stockPool.map(stock => stock.code)
+      const newStocks = dragonStocks.filter(stock => !existingCodes.includes(stock.code))
+      
+      this.stockPool = [...this.stockPool, ...newStocks]
+      
+      // 触发事件通知父组件股票池已更新
+      this.$emit('stock-pool-updated', this.stockPool)
+      
+      // 显示成功消息
+      this.$emit('show-message', {
+        type: 'success',
+        message: `成功加载${newStocks.length}只龙头股票到股票池`
+      })
+    },
+
+    // 注册行情推送
+    async registerQuotePush() {
+      if (this.stockPool.length === 0) return
+
+      const stockCodes = this.stockPool.map(stock => stock.code)
+      if (this.quoteSessionId) {
+        unregisterPush(this.quoteSessionId) // 如果已存在推送，先取消
+      }
+      
+      this.quoteSessionId = registerPush(stockCodes, (data) => {
+        this.handleQuoteData(data)
+      })
+    },
+
+    // 处理行情推送数据
+    handleQuoteData(data) {
+      data.forEach(item => {
+        const stock = this.stockPool.find(s => s.code === item.code)
+        if (stock) {
+          // 只在有数据时才更新对应字段
+          if (item.price !== undefined && item.price !== null) {
+            stock.price = item.price
+          }
+          if (item.zhangdiefu !== undefined && item.zhangdiefu !== null) {
+            stock.change = item.zhangdiefu
+          }
+          if (item.zhangshu !== undefined && item.zhangshu !== null) {
+            stock.speed = item.zhangshu
+          }
+        }
+      })
     },
     
     // 刷新股票价格（可以集成其他股票价格API）
@@ -226,17 +266,35 @@ export default {
       this.loadingPrices = true
       
       try {
-        // 这里可以集成股票价格API，目前只是模拟
-        for (let stock of this.stockPool) {
-          // 模拟价格数据
-          stock.price = Math.random() * 100 + 10
-          stock.change = (Math.random() - 0.5) * 20
-          stock.speed = (Math.random() - 0.5) * 10 // 模拟涨速数据
+        // 获取所有股票代码
+        const stockCodes = this.stockPool.map(stock => stock.code)
+        
+        // 注册推送
+        if (this.quoteSessionId) {
+          unregisterPush(this.quoteSessionId) // 如果已存在推送，先取消
         }
+        this.quoteSessionId = registerPush(stockCodes, (data) => {
+          // 处理推送数据
+          data.forEach(item => {
+            const stock = this.stockPool.find(s => s.code === item.code)
+            if (stock) {
+              // 只在有数据时才更新对应字段
+              if (item.price !== undefined && item.price !== null) {
+                stock.price = item.price
+              }
+              if (item.zhangdiefu !== undefined && item.zhangdiefu !== null) {
+                stock.change = item.zhangdiefu
+              }
+              if (item.zhangshu !== undefined && item.zhangshu !== null) {
+                stock.speed = item.zhangshu
+              }
+            }
+          })
+        })
         
         this.$emit('show-message', {
           type: 'success',
-          message: '股票价格刷新完成'
+          message: '股票价格推送注册成功'
         })
         
       } catch (error) {
@@ -271,10 +329,6 @@ export default {
 </script>
 
 <style scoped>
-.stock-pool-card {
-  margin: 20px;
-}
-
 .card-header {
   display: flex;
   justify-content: space-between;
@@ -286,8 +340,9 @@ export default {
   font-weight: 600;
 }
 
-.header-actions {
-  display: flex;
+.tables-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
 
@@ -315,7 +370,7 @@ export default {
 }
 
 :deep(.el-card__header) {
-  padding: 15px 20px;
+  padding: 12px 20px;
 }
 
 :deep(.el-table) {
@@ -332,5 +387,33 @@ export default {
 
 :deep(.el-table__body-wrapper) {
   overflow-x: auto;
+}
+
+/* 压缩表格竖向空间 */
+:deep(.el-table__row) { 
+  height: 30px;
+}
+
+:deep(.el-table .cell) {
+  padding: 0px 8px;  
+}
+
+:deep(.el-table__header .cell) {
+  font-weight: 500;
+}
+
+:deep(.el-table__body td) {
+  padding: 0px 0;
+}
+
+:deep(.el-button--small) {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+:deep(.el-tag--small) {
+  padding: 0 4px;
+  height: 20px;
+  line-height: 18px;
 }
 </style>

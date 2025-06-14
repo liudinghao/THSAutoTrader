@@ -50,7 +50,6 @@ body {
 .main-content {
   flex: 1;
   margin-left: 200px;
-  padding: 1rem;
   background-color: #f8f9fa;
   transition: margin-left 0.3s ease;
 

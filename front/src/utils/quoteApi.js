@@ -28,6 +28,7 @@ export function jumpToQuote(code, stockCode) {
  */
 export function registerPush(codes, callback) {
   var quoteSessionId = window.API.createSessionId('Quote');
+  console.log('quoteSessionId:', quoteSessionId);
   window.API.use({
     method: 'Quote.registerPush',
     data: { code: codes.join(',') },
@@ -55,13 +56,14 @@ export function registerPush(codes, callback) {
 
 /**
  * 取消推送
+ * @param {string} sessionId 会话ID
  */
-export function unregisterPush() {
+export function unregisterPush(sessionId) {
   window.API.use({
     method: 'Quote.unregisterPush',
-    sessionId: window['sessionId'],
+    sessionId: sessionId,
     success: function (data) {
-      window['sessionId'] = null;
+      sessionId = null;
       // 通知
       customLog('取消监听成功');
     },

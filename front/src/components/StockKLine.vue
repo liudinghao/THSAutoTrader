@@ -121,7 +121,7 @@ export default {
 
 <style scoped>
 .kline-chart {
-  width: 200px;
-  height: 100px;
+  width: 100%;
+  height: 80px;
 }
 </style> 
