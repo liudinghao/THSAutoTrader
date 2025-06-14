@@ -14,7 +14,8 @@ export default {
       required: true
     }
   },
-  setup(props) {
+  emits: ['update-price'],
+  setup(props, { emit }) {
     const chartRef = ref(null)
     let chart = null
 
@@ -53,6 +54,21 @@ export default {
               value: [parseFloat(open), parseFloat(close), parseFloat(low), parseFloat(high)]
             }
           })
+          
+          // 获取最新价格和涨幅
+          const latestData = data[data.length - 1]
+          if (latestData) {
+            const latestPrice = latestData.value[1] // 最新收盘价
+            const prevPrice = data[data.length - 2]?.value[1] // 前一个收盘价
+            const change = prevPrice ? ((latestPrice - prevPrice) / prevPrice * 100).toFixed(2) : 0
+            
+            // 发送价格更新事件
+            emit('update-price', {
+              code: props.code,
+              price: latestPrice,
+              change: parseFloat(change)
+            })
+          }
           
           const option = {
             grid: {

@@ -17,8 +17,9 @@
         border
         stripe
         @row-click="handleRowClick"
+        @sort-change="handleSortChange"
       >
-        <el-table-column prop="name" label="股票信息" min-width="65">
+        <el-table-column label="股票信息" min-width="65">
           <template #default="{ row }">
             <div class="stock-info">
               <span class="stock-name">{{ row.name }}</span>
@@ -27,11 +28,11 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="涨速" min-width="65" align="right" sortable>
+        <el-table-column prop="speed" label="涨速" min-width="65" align="right" sortable="custom">
           <template #default="{ row }">
             <div v-if="row.speed !== null">
               <el-tag
-                :type="row.speed > 0 ? 'success' : row.speed < 0 ? 'danger' : 'info'"
+                :type="row.speed > 0 ? 'danger' : row.speed < 0 ? 'success' : 'info'"
                 size="small"
               >
                 {{ row.speed > 0 ? '+' : '' }}{{ row.speed?.toFixed(2) }}%
@@ -41,7 +42,7 @@
           </template>
         </el-table-column>
         
-        <el-table-column prop="zttj_ct" label="涨停次数" min-width="60" align="center">
+        <el-table-column label="涨停次数" min-width="60" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.zttj_ct && row.zttj_days" type="info">
               {{ row.zttj_ct }}/{{ row.zttj_days }}
@@ -50,14 +51,21 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="现价/涨跌幅" min-width="80" align="right" sortable>
+        <el-table-column label="现价" min-width="60" align="right">
           <template #default="{ row }">
             <div v-if="row.price !== null">
-              <span class="price">￥{{ row.price.toFixed(2) }}</span>
+              <span class="price">{{ row.price.toFixed(2) }}</span>
+            </div>
+            <span v-else>--</span>
+          </template>
+        </el-table-column>
+
+        <el-table-column prop="change" label="涨跌幅" min-width="70" align="right" sortable="custom">
+          <template #default="{ row }">
+            <div v-if="row.change !== null">
               <el-tag
-                :type="row.change > 0 ? 'success' : row.change < 0 ? 'danger' : 'info'"
+                :type="row.change > 0 ? 'danger' : row.change < 0 ? 'success' : 'info'"
                 size="small"
-                class="ml-2"
               >
                 {{ row.change > 0 ? '+' : '' }}{{ row.change?.toFixed(2) }}%
               </el-tag>
@@ -66,9 +74,9 @@
           </template>
         </el-table-column>
         
-        <el-table-column label="K线图" min-width="160" align="center">
+        <el-table-column label="K线图" min-width="130" align="center">
           <template #default="{ row }">
-            <stock-k-line :code="row.code" />
+            <stock-k-line :code="row.code" @update-price="handleKLinePriceUpdate" />
           </template>
         </el-table-column>
       </el-table>
@@ -308,21 +316,37 @@ export default {
       }
     },
     
-    // 按涨跌幅排序
-    sortByChange() {
-      if (this.sortField === 'change') {
-        this.sortOrder = this.sortOrder === 'asc' ? 'desc' : 'asc'
-      } else {
-        this.sortField = 'change'
-        this.sortOrder = 'desc'
-      }
-    },
-    
     // 处理行点击事件
     handleRowClick(row) {
       // 获取所有股票池中的股票代码
       const stockCodes = this.stockPool.map(stock => stock.code)
       jumpToQuote(row.code, stockCodes)
+    },
+
+    // 处理K线组件发送的价格更新
+    handleKLinePriceUpdate({ code, price, change }) {
+      const stock = this.stockPool.find(s => s.code === code)
+      if (stock) {
+        stock.price = price
+        stock.change = change
+      }
+    },
+
+    // 处理排序变化
+    handleSortChange({ prop, order }) {
+      if (!prop) {
+        this.sortField = ''
+        this.sortOrder = 'desc'
+        return
+      }
+      
+      this.sortField = prop
+      this.sortOrder = order === 'ascending' ? 'asc' : 'desc'
+      
+      // 强制更新排序后的数据
+      this.$nextTick(() => {
+        this.stockPool = [...this.sortedStockPool]
+      })
     }
   }
 }
@@ -395,7 +419,7 @@ export default {
 }
 
 :deep(.el-table .cell) {
-  padding: 0px 8px;  
+  padding: 0px 4px;  
 }
 
 :deep(.el-table__header .cell) {
