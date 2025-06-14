@@ -53,8 +53,8 @@
         
         <el-table-column label="现价" min-width="60" align="right">
           <template #default="{ row }">
-            <div v-if="row.price !== null">
-              <span class="price">{{ row.price.toFixed(2) }}</span>
+            <div v-if="row.price !== null && row.price !== undefined && !isNaN(row.price)">
+              <span class="price">{{ Number(row.price).toFixed(2) }}</span>
             </div>
             <span v-else>--</span>
           </template>
@@ -62,12 +62,12 @@
 
         <el-table-column prop="change" label="涨跌幅" min-width="70" align="right" sortable="custom">
           <template #default="{ row }">
-            <div v-if="row.change !== null">
+            <div v-if="row.change !== null && row.change !== undefined && !isNaN(row.change)">
               <el-tag
                 :type="row.change > 0 ? 'danger' : row.change < 0 ? 'success' : 'info'"
                 size="small"
               >
-                {{ row.change > 0 ? '+' : '' }}{{ row.change?.toFixed(2) }}%
+                {{ row.change > 0 ? '+' : '' }}{{ Number(row.change).toFixed(2) }}%
               </el-tag>
             </div>
             <span v-else>--</span>
@@ -76,7 +76,10 @@
         
         <el-table-column label="K线图" min-width="130" align="center">
           <template #default="{ row }">
-            <stock-k-line :code="row.code" @update-price="handleKLinePriceUpdate" />
+            <stock-k-line 
+              :code="row.code" 
+              :kline-data="row.klineData || []"
+            />
           </template>
         </el-table-column>
       </el-table>
@@ -210,12 +213,41 @@ export default {
       throw new Error(result.msg || '获取数据失败')
     },
 
+    // 获取K线数据
+    async fetchKLineData(code) {
+      try {
+        const secid = code.startsWith('6') ? `1.${code}` : `0.${code}`
+        const date = new Date()
+        const endDate = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
+        
+        const response = await fetch(
+          `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&ut=fa5fd1943c7b386f172d6893dbfba10b&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58%2Cf59%2Cf60%2Cf61&klt=101&fqt=1&end=${endDate}&lmt=30`
+        )
+        const result = await response.json()
+        
+        if (result.rc === 0 && result.data.klines) {
+          return result.data.klines.map(item => {
+            const [date, open, close, high, low] = item.split(',')
+            return {
+              date,
+              value: [parseFloat(open), parseFloat(close), parseFloat(low), parseFloat(high)]
+            }
+          })
+        }
+        return []
+      } catch (error) {
+        console.error('获取K线数据失败:', error)
+        return []
+      }
+    },
+
     // 更新股票池数据
     async updateStockPool(dragonStocks) {
       // 合并股票池，避免重复
       const existingCodes = this.stockPool.map(stock => stock.code)
       const newStocks = dragonStocks.filter(stock => !existingCodes.includes(stock.code))
       
+      // 先添加股票到池中，不等待K线数据
       this.stockPool = [...this.stockPool, ...newStocks]
       
       // 触发事件通知父组件股票池已更新
@@ -226,6 +258,34 @@ export default {
         type: 'success',
         message: `成功加载${newStocks.length}只龙头股票到股票池`
       })
+
+      // 异步加载K线数据
+      this.loadKLineDataAsync(newStocks)
+    },
+
+    // 异步加载K线数据
+    async loadKLineDataAsync(stocks) {
+      for (const stock of stocks) {
+        try {
+          const klineData = await this.fetchKLineData(stock.code)
+          // 使用Vue 3的响应式更新
+          const stockIndex = this.stockPool.findIndex(s => s.code === stock.code)
+          if (stockIndex !== -1) {
+            // 补充现价和涨跌幅，从K线数据中获取
+            const latestPrice = klineData[klineData.length - 1]?.value[1]
+            const prevPrice = klineData[klineData.length - 2]?.value[1]
+            
+            // 直接更新对象属性，Vue 3会自动处理响应式
+            Object.assign(this.stockPool[stockIndex], {
+              klineData,
+              price: latestPrice,
+              change: prevPrice ? Number(((latestPrice - prevPrice) / prevPrice * 100).toFixed(2)) : 0
+            })
+          }
+        } catch (error) {
+          console.error(`获取股票${stock.code}的K线数据失败:`, error)
+        }
+      }
     },
 
     // 注册行情推送
