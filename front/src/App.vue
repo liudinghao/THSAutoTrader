@@ -1,84 +1,61 @@
 <template>
-  <div class="container mt-5">
-    <h1 class="text-center">自动化控制面板</h1>
-    <div class="row mt-4">
-      <div class="col-md-6">
-        <TradingService 
-          :loading="loading" 
-          @execute-trade="executeTrade"
-        />
-      </div>
-      <div class="col-md-6">
-        <StockPool 
-          :loading="loading" 
-          @stock-pool-updated="updateStockPool"
-        />
-      </div>
-      <div class="col-md-6">
-        <WindowControl 
-          :loading="loading" 
-          :result="result"
-          @api-call="callApi"
-        />
-      </div>
-    </div>
+  <div class="app-container">
+    <NavBar :is-collapsed="isNavCollapsed" @toggle-collapse="toggleNavCollapse" />
+    <main class="main-content" :class="{ 'nav-collapsed': isNavCollapsed }">
+      <router-view></router-view>
+    </main>
   </div>
 </template>
 
 <script>
-import { ref } from 'vue'
-import axios from 'axios'
-import WindowControl from './components/WindowControl.vue'
-import TradingService from './components/TradingService.vue'
-import StockPool from './components/StockPool.vue'
+import NavBar from './components/NavBar.vue'
 
 export default {
   name: 'App',
   components: {
-    WindowControl,
-    TradingService,
-    StockPool
+    NavBar
   },
-  setup() {
-    const result = ref('')
-    const loading = ref(false)
-
-    const callApi = async (url) => {
-      loading.value = true
-      try {
-        const response = await axios.get(url)
-        result.value = JSON.stringify(response.data, null, 2)
-      } catch (error) {
-        console.error('请求失败:', error)
-        result.value = '请求失败: ' + error.message
-      } finally {
-        loading.value = false
-      }
-    }
-
-    const executeTrade = async () => {
-      loading.value = true
-      try {
-        const response = await axios.post('http://localhost:5000/trade')
-        result.value = JSON.stringify(response.data, null, 2)
-      } catch (error) {
-        console.error('交易操作失败:', error)
-        result.value = '交易操作失败: ' + error.message
-      } finally {
-        loading.value = false
-      }
-    }
-
+  data() {
     return {
-      result,
-      loading,
-      callApi,
-      executeTrade
+      isNavCollapsed: false
+    }
+  },
+  methods: {
+    toggleNavCollapse() {
+      this.isNavCollapsed = !this.isNavCollapsed
     }
   }
 }
 </script>
 
-<style scoped>
-/* 可以在这里添加组件特定的样式 */
-</style> 
+<style lang="less" scoped>
+/* 全局样式重置 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.5;
+  color: #333;
+}
+
+.app-container {
+  display: flex;
+  min-height: 100vh;
+}
+
+.main-content {
+  flex: 1;
+  margin-left: 200px;
+  padding: 1rem;
+  background-color: #f8f9fa;
+  transition: margin-left 0.3s ease;
+
+  &.nav-collapsed {
+    margin-left: 60px;
+  }
+}
+</style>
