@@ -42,6 +42,17 @@ export default {
       default: false
     }
   },
+  watch: {
+    isCollapsed(newValue) {
+      localStorage.setItem('navCollapsed', newValue.toString())
+    }
+  },
+  created() {
+    const savedState = localStorage.getItem('navCollapsed')
+    if (savedState !== null) {
+      this.$emit('update:isCollapsed', savedState === 'true')
+    }
+  },
   data() {
     return {
       navItems: [
@@ -58,6 +69,11 @@ export default {
         {
           path: '/stock-pool',
           title: '股票池管理',
+          icon: 'DataLine'
+        },
+        {
+          path: '/asset-management',
+          title: '资产管理',
           icon: 'DataLine'
         }
       ]

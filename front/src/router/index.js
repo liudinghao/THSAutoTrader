@@ -29,6 +29,14 @@ const routes = [
       title: '股票池管理',
     },
   },
+  {
+    path: '/asset-management',
+    name: 'AssetManagement',
+    component: () => import('../views/AssetManagement.vue'),
+    meta: {
+      title: '资产管理',
+    },
+  },
 ];
 
 const router = createRouter({

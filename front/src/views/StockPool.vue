@@ -3,101 +3,46 @@
     <template #header>
       <div class="card-header">
         <span class="title">股票池管理</span>
+        <stock-pool-header
+          :stock-pool="stockPool"
+          :show-k-line="showKLine"
+          @update:show-k-line="showKLine = $event"
+          @show-message="$emit('show-message', $event)"
+        />
       </div>
     </template>
 
     <div class="tables-container">
-      <!-- 使用v-for循环渲染两张表 -->
-      <el-table
+      <stock-table
         v-for="(tableData, index) in [leftTableData, rightTableData]"
         :key="index"
-        :data="tableData"
-        style="width: 100%"
-        v-loading="loading"
-        border
-        stripe
+        :table-data="tableData"
+        :loading="loading"
+        :show-k-line="showKLine"
         @row-click="handleRowClick"
         @sort-change="handleSortChange"
-      >
-        <el-table-column label="股票信息" min-width="65">
-          <template #default="{ row }">
-            <div class="stock-info">
-              <span class="stock-name">{{ row.name }}</span>
-              <span class="stock-code">{{ row.code }}</span>
-            </div>
-          </template>
-        </el-table-column>
-        
-        <el-table-column prop="speed" label="涨速" min-width="65" align="right" sortable="custom">
-          <template #default="{ row }">
-            <div v-if="row.speed !== null">
-              <el-tag
-                :type="row.speed > 0 ? 'danger' : row.speed < 0 ? 'success' : 'info'"
-                size="small"
-              >
-                {{ row.speed > 0 ? '+' : '' }}{{ row.speed?.toFixed(2) }}%
-              </el-tag>
-            </div>
-            <span v-else>--</span>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="涨停次数" min-width="60" align="center">
-          <template #default="{ row }">
-            <el-tag v-if="row.zttj_ct && row.zttj_days" type="info">
-              {{ row.zttj_ct }}/{{ row.zttj_days }}
-            </el-tag>
-            <span v-else>--</span>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="现价" min-width="60" align="right">
-          <template #default="{ row }">
-            <div v-if="row.price !== null && row.price !== undefined && !isNaN(row.price)">
-              <span class="price">{{ Number(row.price).toFixed(2) }}</span>
-            </div>
-            <span v-else>--</span>
-          </template>
-        </el-table-column>
-
-        <el-table-column prop="change" label="涨跌幅" min-width="70" align="right" sortable="custom">
-          <template #default="{ row }">
-            <div v-if="row.change !== null && row.change !== undefined && !isNaN(row.change)">
-              <el-tag
-                :type="row.change > 0 ? 'danger' : row.change < 0 ? 'success' : 'info'"
-                size="small"
-              >
-                {{ row.change > 0 ? '+' : '' }}{{ Number(row.change).toFixed(2) }}%
-              </el-tag>
-            </div>
-            <span v-else>--</span>
-          </template>
-        </el-table-column>
-        
-        <el-table-column label="K线图" min-width="130" align="center">
-          <template #default="{ row }">
-            <stock-k-line 
-              :code="row.code" 
-              :kline-data="row.klineData || []"
-            />
-          </template>
-        </el-table-column>
-      </el-table>
+      />
     </div>
   </el-card>
 </template>
 
 <script>
-import { Delete, Trophy } from '@element-plus/icons-vue'
-import StockKLine from '../components/StockKLine.vue'
-import { jumpToQuote, registerPush, unregisterPush } from '../utils/quoteApi'
+import { Delete, Trophy, Star, TrendCharts } from '@element-plus/icons-vue'
+import StockTable from '../components/stock/StockTable.vue'
+import StockPoolHeader from '../components/StockPoolHeader.vue'
+import { jumpToQuote, addSelfStock } from '../utils/quoteApi'
+import { indexedDBUtil } from '../utils/indexedDB'
+import { stockService } from '../services/stockService'
 
 export default {
   name: 'StockPool',
   components: {
     Delete,
     Trophy,
-    StockKLine
+    Star,
+    TrendCharts,
+    StockTable,
+    StockPoolHeader
   },
   props: {
     loading: {
@@ -112,31 +57,26 @@ export default {
       loadingPrices: false,
       sortField: '',
       sortOrder: 'desc',
-      quoteSessionId: null
+      addingToSelf: false,
+      showKLine: localStorage.getItem('showKLine') !== 'false'
     }
   },
   created() {
-    // 页面加载时自动加载龙头股票池数据
-    this.loadDragonStockPool()
-    // 加载完成后自动刷新价格
-    this.$nextTick(() => {
-      this.refreshStockPrices()
+    this.initIndexedDB().then(() => {
+      this.loadDragonStockPool()
+      this.$nextTick(() => {
+        this.refreshStockPrices()
+      })
     })
   },
   beforeUnmount() {
-    // 组件销毁前取消推送
-    if (this.quoteSessionId) {
-      unregisterPush(this.quoteSessionId)
-      this.quoteSessionId = null
-    }
+    stockService.dispose()
   },
   computed: {
-    // 计算左侧表格数据
     leftTableData() {
       const midPoint = Math.ceil(this.sortedStockPool.length / 2)
       return this.sortedStockPool.slice(0, midPoint)
     },
-    // 计算右侧表格数据
     rightTableData() {
       const midPoint = Math.ceil(this.sortedStockPool.length / 2)
       return this.sortedStockPool.slice(midPoint)
@@ -154,33 +94,42 @@ export default {
         if (aValue === null) return 1
         if (bValue === null) return -1
         
-        return this.sortOrder === 'asc' ? aValue - bValue : bValue - aValue
+        if (this.sortField === 'reason_type') {
+          const aFirstReason = aValue.split('+')[0]?.trim() || ''
+          const bFirstReason = bValue.split('+')[0]?.trim() || ''
+          return this.sortOrder === 'asc' 
+            ? aFirstReason.localeCompare(bFirstReason)
+            : bFirstReason.localeCompare(aFirstReason)
+        }
+        
+        if (typeof aValue === 'number' && typeof bValue === 'number') {
+          return this.sortOrder === 'asc' ? aValue - bValue : bValue - aValue
+        }
+        
+        return this.sortOrder === 'asc' 
+          ? String(aValue).localeCompare(String(bValue))
+          : String(bValue).localeCompare(String(aValue))
       })
     }
   },
   methods: {
-    // 修改删除方法，增加表格位置参数
-    removeStock(index, tablePosition) {
-      const actualIndex = tablePosition === 'left' ? index : index + this.leftTableData.length
-      this.stockPool.splice(actualIndex, 1)
+    async initIndexedDB() {
+      try {
+        await indexedDBUtil.init()
+      } catch (error) {
+        console.error('初始化数据库失败:', error)
+        this.$emit('show-message', {
+          type: 'error',
+          message: '初始化数据库失败: ' + error.message
+        })
+      }
     },
     
-    // 外部调用方法，用于获取股票池数据
-    getStockPool() {
-      return this.stockPool
-    },
-    
-    // 外部调用方法，用于设置股票池数据
-    setStockPool(stockPool) {
-      this.stockPool = stockPool || []
-    },
-    
-    // 加载龙头股票池数据
     async loadDragonStockPool() {
       this.loadingDragonPool = true
       
       try {
-        const dragonStocks = await this.fetchDragonStocks()
+        const dragonStocks = await stockService.fetchDragonStocks()
         await this.updateStockPool(dragonStocks)
         await this.registerQuotePush()
       } catch (error) {
@@ -194,134 +143,52 @@ export default {
       }
     },
 
-    // 获取龙头股票数据
-    async fetchDragonStocks() {
-      const response = await fetch('https://www.wttiao.com/moni/ztpool/dragonCallback')
-      const result = await response.json()
-      
-      if (result.code === 0 && result.data && Array.isArray(result.data)) {
-        return result.data.map(item => ({
-          code: item.code,
-          name: item.name,
-          date: item.date,
-          zttj_days: item.zttj_days,
-          zttj_ct: item.zttj_ct,
-          price: null,
-          change: null
-        }))
-      }
-      throw new Error(result.msg || '获取数据失败')
-    },
-
-    // 获取K线数据
-    async fetchKLineData(code) {
-      try {
-        const secid = code.startsWith('6') ? `1.${code}` : `0.${code}`
-        const date = new Date()
-        const endDate = `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(date.getDate()).padStart(2, '0')}`
-        
-        const response = await fetch(
-          `https://push2his.eastmoney.com/api/qt/stock/kline/get?secid=${secid}&ut=fa5fd1943c7b386f172d6893dbfba10b&fields1=f1%2Cf2%2Cf3%2Cf4%2Cf5%2Cf6&fields2=f51%2Cf52%2Cf53%2Cf54%2Cf55%2Cf56%2Cf57%2Cf58%2Cf59%2Cf60%2Cf61&klt=101&fqt=1&end=${endDate}&lmt=30`
-        )
-        const result = await response.json()
-        
-        if (result.rc === 0 && result.data.klines) {
-          return result.data.klines.map(item => {
-            const [date, open, close, high, low] = item.split(',')
-            return {
-              date,
-              value: [parseFloat(open), parseFloat(close), parseFloat(low), parseFloat(high)]
-            }
-          })
-        }
-        return []
-      } catch (error) {
-        console.error('获取K线数据失败:', error)
-        return []
-      }
-    },
-
-    // 更新股票池数据
     async updateStockPool(dragonStocks) {
-      // 合并股票池，避免重复
       const existingCodes = this.stockPool.map(stock => stock.code)
       const newStocks = dragonStocks.filter(stock => !existingCodes.includes(stock.code))
       
-      // 先添加股票到池中，不等待K线数据
       this.stockPool = [...this.stockPool, ...newStocks]
       
-      // 触发事件通知父组件股票池已更新
       this.$emit('stock-pool-updated', this.stockPool)
       
-      // 显示成功消息
       this.$emit('show-message', {
         type: 'success',
         message: `成功加载${newStocks.length}只龙头股票到股票池`
       })
 
-      // 异步加载K线数据
-      this.loadKLineDataAsync(newStocks)
-    },
-
-    // 异步加载K线数据
-    async loadKLineDataAsync(stocks) {
-      for (const stock of stocks) {
-        try {
-          const klineData = await this.fetchKLineData(stock.code)
-          // 使用Vue 3的响应式更新
-          const stockIndex = this.stockPool.findIndex(s => s.code === stock.code)
-          if (stockIndex !== -1) {
-            // 补充现价和涨跌幅，从K线数据中获取
-            const latestPrice = klineData[klineData.length - 1]?.value[1]
-            const prevPrice = klineData[klineData.length - 2]?.value[1]
-            
-            // 直接更新对象属性，Vue 3会自动处理响应式
-            Object.assign(this.stockPool[stockIndex], {
-              klineData,
-              price: latestPrice,
-              change: prevPrice ? Number(((latestPrice - prevPrice) / prevPrice * 100).toFixed(2)) : 0
-            })
-          }
-        } catch (error) {
-          console.error(`获取股票${stock.code}的K线数据失败:`, error)
+      stockService.loadKLineData(newStocks, (code, data) => {
+        const stockIndex = this.stockPool.findIndex(s => s.code === code)
+        if (stockIndex !== -1) {
+          Object.assign(this.stockPool[stockIndex], data)
         }
-      }
+      })
     },
 
-    // 注册行情推送
     async registerQuotePush() {
-      if (this.stockPool.length === 0) return
-
       const stockCodes = this.stockPool.map(stock => stock.code)
-      if (this.quoteSessionId) {
-        unregisterPush(this.quoteSessionId) // 如果已存在推送，先取消
-      }
-      
-      this.quoteSessionId = registerPush(stockCodes, (data) => {
-        this.handleQuoteData(data)
+      stockService.registerQuotePush(stockCodes, (data) => {
+        data.forEach(item => {
+          const stock = this.stockPool.find(s => s.code === item.code)
+          if (stock) {
+            const updates = {}
+            if (item.price !== undefined && item.price !== null) {
+              updates.price = item.price
+            }
+            if (item.zhangdiefu !== undefined && item.zhangdiefu !== null) {
+              updates.change = item.zhangdiefu
+            }
+            if (item.zhangshu !== undefined && item.zhangshu !== null) {
+              updates.speed = item.zhangshu
+            }
+            
+            if (Object.keys(updates).length > 0) {
+              Object.assign(stock, updates)
+            }
+          }
+        })
       })
     },
 
-    // 处理行情推送数据
-    handleQuoteData(data) {
-      data.forEach(item => {
-        const stock = this.stockPool.find(s => s.code === item.code)
-        if (stock) {
-          // 只在有数据时才更新对应字段
-          if (item.price !== undefined && item.price !== null) {
-            stock.price = item.price
-          }
-          if (item.zhangdiefu !== undefined && item.zhangdiefu !== null) {
-            stock.change = item.zhangdiefu
-          }
-          if (item.zhangshu !== undefined && item.zhangshu !== null) {
-            stock.speed = item.zhangshu
-          }
-        }
-      })
-    },
-    
-    // 刷新股票价格（可以集成其他股票价格API）
     async refreshStockPrices() {
       if (this.stockPool.length === 0) {
         this.$emit('show-message', {
@@ -334,37 +201,13 @@ export default {
       this.loadingPrices = true
       
       try {
-        // 获取所有股票代码
         const stockCodes = this.stockPool.map(stock => stock.code)
-        
-        // 注册推送
-        if (this.quoteSessionId) {
-          unregisterPush(this.quoteSessionId) // 如果已存在推送，先取消
-        }
-        this.quoteSessionId = registerPush(stockCodes, (data) => {
-          // 处理推送数据
-          data.forEach(item => {
-            const stock = this.stockPool.find(s => s.code === item.code)
-            if (stock) {
-              // 只在有数据时才更新对应字段
-              if (item.price !== undefined && item.price !== null) {
-                stock.price = item.price
-              }
-              if (item.zhangdiefu !== undefined && item.zhangdiefu !== null) {
-                stock.change = item.zhangdiefu
-              }
-              if (item.zhangshu !== undefined && item.zhangshu !== null) {
-                stock.speed = item.zhangshu
-              }
-            }
-          })
-        })
+        stockService.registerQuotePush(stockCodes, this.handleQuoteData)
         
         this.$emit('show-message', {
           type: 'success',
           message: '股票价格推送注册成功'
         })
-        
       } catch (error) {
         console.error('刷新股票价格失败:', error)
         this.$emit('show-message', {
@@ -376,23 +219,11 @@ export default {
       }
     },
     
-    // 处理行点击事件
     handleRowClick(row) {
-      // 获取所有股票池中的股票代码
       const stockCodes = this.stockPool.map(stock => stock.code)
       jumpToQuote(row.code, stockCodes)
     },
 
-    // 处理K线组件发送的价格更新
-    handleKLinePriceUpdate({ code, price, change }) {
-      const stock = this.stockPool.find(s => s.code === code)
-      if (stock) {
-        stock.price = price
-        stock.change = change
-      }
-    },
-
-    // 处理排序变化
     handleSortChange({ prop, order }) {
       if (!prop) {
         this.sortField = ''
@@ -403,10 +234,29 @@ export default {
       this.sortField = prop
       this.sortOrder = order === 'ascending' ? 'asc' : 'desc'
       
-      // 强制更新排序后的数据
       this.$nextTick(() => {
         this.stockPool = [...this.sortedStockPool]
       })
+    },
+
+    async handleAddAllToSelf() {
+      this.addingToSelf = true
+      try {
+        const stockCodes = this.stockPool.map(stock => stock.code)
+        await addSelfStock(stockCodes)
+        this.$emit('show-message', {
+          type: 'success',
+          message: '所有股票已添加到自选股'
+        })
+      } catch (error) {
+        console.error('添加自选股失败:', error)
+        this.$emit('show-message', {
+          type: 'error',
+          message: '添加自选股失败: ' + error.message
+        })
+      } finally {
+        this.addingToSelf = false
+      }
     }
   }
 }
@@ -420,51 +270,26 @@ export default {
 }
 
 .title {
-  font-size: 18px;
+  font-size: var(--font-size-xlarge);
   font-weight: 600;
 }
 
 .tables-container {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: var(--spacing-small);
 }
 
-.stock-info {
-  display: flex;
-  flex-direction: column;
-}
-
-.stock-name {
-  font-weight: 500;
-}
-
-.stock-code {
-  font-size: 12px;
-  color: #909399;
-}
-
-.price {
-  font-weight: 500;
-  margin-right: 8px;
-}
-
-.ml-2 {
-  margin-left: 8px;
-}
-
+/* 表格样式优化 */
 :deep(.el-card__header) {
-  padding: 12px 20px;
+  padding: var(--spacing-small) var(--spacing-base);
 }
 
 :deep(.el-table) {
   width: 100% !important;
 }
 
-:deep(.el-table__body) {
-  width: 100% !important;
-}
-
+:deep(.el-table__body),
 :deep(.el-table__header) {
   width: 100% !important;
 }
@@ -473,13 +298,12 @@ export default {
   overflow-x: auto;
 }
 
-/* 压缩表格竖向空间 */
 :deep(.el-table__row) { 
   height: 30px;
 }
 
 :deep(.el-table .cell) {
-  padding: 0px 4px;  
+  padding: 0 var(--spacing-mini);  
 }
 
 :deep(.el-table__header .cell) {
@@ -487,17 +311,59 @@ export default {
 }
 
 :deep(.el-table__body td) {
-  padding: 0px 0;
+  padding: 0;
 }
 
 :deep(.el-button--small) {
-  padding: 4px 8px;
-  font-size: 12px;
+  padding: var(--spacing-mini) var(--spacing-small);
+  font-size: var(--font-size-small);
 }
 
 :deep(.el-tag--small) {
-  padding: 0 4px;
+  padding: 0 var(--spacing-mini);
   height: 20px;
   line-height: 18px;
+}
+
+/* 标签基础样式 */
+:deep(.el-tag) {
+  --tag-bg: var(--tag-info-bg);
+  --tag-border: var(--tag-info-border);
+  --tag-color: var(--tag-info-color);
+  
+  background-color: var(--tag-bg);
+  border-color: var(--tag-border);
+  color: var(--tag-color);
+}
+
+/* 标签变体样式 */
+:deep(.el-tag--success) {
+  --tag-bg: var(--tag-success-bg);
+  --tag-border: var(--tag-success-border);
+  --tag-color: var(--tag-success-color);
+}
+
+:deep(.el-tag--warning) {
+  --tag-bg: var(--tag-warning-bg);
+  --tag-border: var(--tag-warning-border);
+  --tag-color: var(--tag-warning-color);
+}
+
+:deep(.el-tag--danger) {
+  --tag-bg: var(--tag-danger-bg);
+  --tag-border: var(--tag-danger-border);
+  --tag-color: var(--tag-danger-color);
+}
+
+:deep(.el-tag--info) {
+  --tag-bg: var(--tag-info-bg);
+  --tag-border: var(--tag-info-border);
+  --tag-color: var(--tag-info-color);
+}
+
+:deep(.el-tag--primary) {
+  --tag-bg: var(--tag-primary-bg);
+  --tag-border: var(--tag-primary-border);
+  --tag-color: var(--tag-primary-color);
 }
 </style>

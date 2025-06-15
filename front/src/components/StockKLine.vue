@@ -25,6 +25,13 @@ export default {
     const initChart = () => {
       if (chartRef.value) {
         chart = echarts.init(chartRef.value)
+        window.addEventListener('resize', handleResize)
+      }
+    }
+
+    const handleResize = () => {
+      if (chart) {
+        chart.resize()
       }
     }
 
@@ -32,6 +39,7 @@ export default {
       if (!chart || !props.klineData.length) return
 
       const option = {
+        animation: false,
         grid: {
           left: '3%',
           right: '3%',
@@ -82,6 +90,7 @@ export default {
     onUnmounted(() => {
       if (chart) {
         chart.dispose()
+        window.removeEventListener('resize', handleResize)
       }
     })
 
@@ -95,6 +104,7 @@ export default {
 <style scoped>
 .kline-chart {
   width: 100%;
-  height: 80px;
+  height: 60px;
+  min-width: 120px;
 }
 </style> 

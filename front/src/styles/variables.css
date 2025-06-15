@@ -1,0 +1,51 @@
+:root {
+  /* 主题色 */
+  --primary-color: #409eff;
+  --success-color: #67c23a;
+  --warning-color: #e6a23c;
+  --danger-color: #f56c6c;
+  --info-color: #909399;
+
+  /* 标签背景色 */
+  --tag-success-bg: #f0f9eb;
+  --tag-success-border: #e1f3d8;
+  --tag-success-color: var(--success-color);
+  
+  --tag-warning-bg: #fdf6ec;
+  --tag-warning-border: #faecd8;
+  --tag-warning-color: var(--warning-color);
+  
+  --tag-danger-bg: #fef0f0;
+  --tag-danger-border: #fde2e2;
+  --tag-danger-color: var(--danger-color);
+  
+  --tag-info-bg: #f4f4f5;
+  --tag-info-border: #e9e9eb;
+  --tag-info-color: var(--info-color);
+  
+  --tag-primary-bg: #ecf5ff;
+  --tag-primary-border: #d9ecff;
+  --tag-primary-color: var(--primary-color);
+
+  /* 股票涨跌颜色 */
+  --stock-up-color: #f56c6c;
+  --stock-down-color: #67c23a;
+
+  /* 布局相关 */
+  --header-height: 60px;
+  --sidebar-width: 200px;
+  --border-radius: 4px;
+  
+  /* 字体相关 */
+  --font-size-small: 12px;
+  --font-size-base: 14px;
+  --font-size-large: 16px;
+  --font-size-xlarge: 18px;
+  
+  /* 间距相关 */
+  --spacing-mini: 4px;
+  --spacing-small: 8px;
+  --spacing-base: 16px;
+  --spacing-large: 24px;
+  --spacing-xlarge: 32px;
+} 

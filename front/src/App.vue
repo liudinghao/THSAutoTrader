@@ -1,6 +1,9 @@
 <template>
   <div class="app-container">
-    <NavBar :is-collapsed="isNavCollapsed" @toggle-collapse="toggleNavCollapse" />
+    <NavBar 
+      v-model:is-collapsed="isNavCollapsed" 
+      @toggle-collapse="toggleNavCollapse" 
+    />
     <main class="main-content" :class="{ 'nav-collapsed': isNavCollapsed }">
       <router-view></router-view>
     </main>
@@ -17,7 +20,7 @@ export default {
   },
   data() {
     return {
-      isNavCollapsed: false
+      isNavCollapsed: localStorage.getItem('navCollapsed') === 'true'
     }
   },
   methods: {
@@ -40,11 +43,13 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   line-height: 1.5;
   color: #333;
+  overflow-x: hidden;
 }
 
 .app-container {
   display: flex;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 .main-content {
@@ -52,9 +57,12 @@ body {
   margin-left: 200px;
   background-color: #f8f9fa;
   transition: margin-left 0.3s ease;
+  overflow-x: hidden;
+  width: calc(100% - 200px);
 
   &.nav-collapsed {
     margin-left: 60px;
+    width: calc(100% - 60px);
   }
 }
 </style>

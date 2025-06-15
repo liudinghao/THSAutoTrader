@@ -69,3 +69,67 @@ export function unregisterPush(sessionId) {
     },
   });
 }
+
+/**
+ * 获取自选股列表
+ * @returns {Promise} 返回自选股列表的Promise
+ */
+export function getSelfStocks() {
+  return new Promise((resolve, reject) => {
+    window.API.use({
+      method: 'Passport.selfStocks',
+      success: function (stocklist) {
+        resolve(stocklist);
+      },
+      error: function (error) {
+        reject(error);
+      },
+    });
+  });
+}
+
+/**
+ * 添加自选股
+ * @param {string[]} code 股票代码
+ * @returns {Promise} 返回操作结果的Promise
+ */
+export function addSelfStock(code) {
+  return new Promise((resolve, reject) => {
+    window.API.use({
+      method: 'Quote.setSelfStock',
+      data: {
+        mode: 'add',
+        code: code.join(','),
+      },
+      success: function (result) {
+        resolve(result);
+      },
+      error: function (error) {
+        reject(error);
+      },
+    });
+  });
+}
+
+/**
+ * 删除自选股
+ * @param {string[]} code 股票代码
+ * @returns {Promise} 返回操作结果的Promise
+ */
+export function removeSelfStock(code) {
+  return new Promise((resolve, reject) => {
+    window.API.use({
+      method: 'Quote.setSelfStock',
+      data: {
+        mode: 'del',
+        code: code.join(','),
+      },
+      success: function (result) {
+        resolve(result);
+      },
+      error: function (error) {
+        reject(error);
+      },
+    });
+  });
+}
