@@ -46,6 +46,7 @@ export function registerPush(codes, callback) {
         },
         success: function (data) {
           const stockData = JSON.parse(data);
+          console.log('registerPush:', data);
           callback(stockData);
         },
       });
