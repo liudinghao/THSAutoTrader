@@ -25,16 +25,13 @@
 </template>
 
 <script>
-import { ArrowLeft, ArrowRight, Monitor, TrendCharts, DataLine } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 
 export default {
   name: 'NavBar',
   components: {
     ArrowLeft,
-    ArrowRight,
-    Monitor,
-    TrendCharts,
-    DataLine
+    ArrowRight
   },
   props: {
     isCollapsed: {
@@ -53,30 +50,15 @@ export default {
       this.$emit('update:isCollapsed', savedState === 'true')
     }
   },
-  data() {
-    return {
-      navItems: [
-        {
-          path: '/window-control',
-          title: '窗口控制调试',
-          icon: 'Monitor'
-        },
-        {
-          path: '/trading-strategy',
-          title: '交易策略',
-          icon: 'TrendCharts'
-        },
-        {
-          path: '/stock-pool',
-          title: '股票池管理',
-          icon: 'DataLine'
-        },
-        {
-          path: '/asset-management',
-          title: '资产管理',
-          icon: 'DataLine'
-        }
-      ]
+  computed: {
+    navItems() {
+      return this.$router.options.routes
+        .filter(route => route.meta?.showInNav)
+        .map(route => ({
+          path: route.path,
+          title: route.meta.title,
+          icon: route.meta.icon
+        }))
     }
   },
   methods: {

@@ -1,4 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router';
+import {
+  Monitor,
+  TrendCharts,
+  DataLine,
+  Connection,
+} from '@element-plus/icons-vue';
 
 const routes = [
   {
@@ -11,6 +17,8 @@ const routes = [
     component: () => import('../views/WindowControl.vue'),
     meta: {
       title: '窗口控制调试',
+      icon: Monitor,
+      showInNav: true,
     },
   },
   {
@@ -19,6 +27,8 @@ const routes = [
     component: () => import('../views/TradingStrategy.vue'),
     meta: {
       title: '交易策略',
+      icon: TrendCharts,
+      showInNav: true,
     },
   },
   {
@@ -27,6 +37,8 @@ const routes = [
     component: () => import('../views/StockPool.vue'),
     meta: {
       title: '股票池管理',
+      icon: DataLine,
+      showInNav: true,
     },
   },
   {
@@ -35,6 +47,18 @@ const routes = [
     component: () => import('../views/AssetManagement.vue'),
     meta: {
       title: '资产管理',
+      icon: DataLine,
+      showInNav: true,
+    },
+  },
+  {
+    path: '/llm-interface',
+    name: 'LLMInterface',
+    component: () => import('../views/LLMInterface.vue'),
+    meta: {
+      title: 'deepseek',
+      icon: Connection,
+      showInNav: true,
     },
   },
 ];
