@@ -134,3 +134,33 @@ export function removeSelfStock(code) {
     });
   });
 }
+
+/**
+ * 根据概念代码获取股票列表
+ * @param {string} conceptCode 概念代码
+ * @returns {Promise<string[]>} 返回股票代码数组的Promise
+ */
+export function getStocksByConceptCode(conceptCode) {
+  return new Promise((resolve, reject) => {
+    window.API.use({
+      method: 'Util.getBlockStockByCode',
+      data: conceptCode,
+      success: function (result) {
+        try {
+          // 返回的是逗号分隔的股票代码字符串，需要转换为数组
+          const stockCodes = result.split(',').filter((code) => code.trim());
+          console.log(
+            `概念 ${conceptCode} 获取到 ${stockCodes.length} 只股票:`,
+            stockCodes
+          );
+          resolve(stockCodes);
+        } catch (error) {
+          reject(new Error(`解析股票代码失败: ${error.message}`));
+        }
+      },
+      error: function (error) {
+        reject(new Error(`获取概念股票失败: ${error.message}`));
+      },
+    });
+  });
+}

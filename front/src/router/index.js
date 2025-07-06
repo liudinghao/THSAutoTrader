@@ -1,9 +1,10 @@
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHashHistory } from 'vue-router';
 import {
   Monitor,
   TrendCharts,
   DataLine,
   Connection,
+  Refresh,
 } from '@element-plus/icons-vue';
 
 const routes = [
@@ -61,10 +62,30 @@ const routes = [
       showInNav: true,
     },
   },
+  {
+    path: '/zt-tian-ti',
+    name: 'ZTTianTi',
+    component: () => import('../views/ZTTianTi.vue'),
+    meta: {
+      title: '涨停天梯',
+      icon: DataLine,
+      showInNav: true,
+    },
+  },
+  {
+    path: '/data-update',
+    name: 'DataUpdate',
+    component: () => import('../views/DataUpdate.vue'),
+    meta: {
+      title: '数据更新',
+      icon: Refresh,
+      showInNav: true,
+    },
+  },
 ];
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes,
 });
 
