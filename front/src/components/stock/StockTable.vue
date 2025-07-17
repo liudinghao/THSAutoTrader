@@ -20,20 +20,6 @@
       </template>
     </el-table-column>
     
-    <el-table-column prop="speed" label="涨速" min-width="65" align="right" sortable="custom">
-      <template #default="{ row }">
-        <div v-if="row.speed !== null">
-          <el-tag
-            :type="row.speed > 0 ? 'danger' : row.speed < 0 ? 'success' : 'info'"
-            size="small"
-          >
-            {{ row.speed > 0 ? '+' : '' }}{{ row.speed?.toFixed(2) }}%
-          </el-tag>
-        </div>
-        <span v-else>--</span>
-      </template>
-    </el-table-column>
-    
     <el-table-column label="现价" min-width="60" align="right">
       <template #default="{ row }">
         <div v-if="row.price !== null && row.price !== undefined && !isNaN(row.price)">
@@ -57,7 +43,7 @@
       </template>
     </el-table-column>
     
-    <el-table-column label="涨停原因" prop="reason_type" min-width="80" align="center" sortable="custom">
+    <el-table-column label="涨停原因" prop="reason_type" min-width="120" align="center" sortable="custom">
       <template #default="{ row }">
         <reason-tags :reason-type="row.reason_type" />
       </template>

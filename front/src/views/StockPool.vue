@@ -177,9 +177,7 @@ export default {
             if (item.zhangdiefu !== undefined && item.zhangdiefu !== null) {
               updates.change = item.zhangdiefu
             }
-            if (item.zhangshu !== undefined && item.zhangshu !== null) {
-              updates.speed = item.zhangshu
-            }
+
             
             if (Object.keys(updates).length > 0) {
               Object.assign(stock, updates)
@@ -303,7 +301,7 @@ export default {
 }
 
 :deep(.el-table .cell) {
-  padding: 0 var(--spacing-mini);  
+  padding: 1px var(--spacing-mini);  
 }
 
 :deep(.el-table__header .cell) {

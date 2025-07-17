@@ -5,6 +5,8 @@ import {
   DataLine,
   Connection,
   Refresh,
+  Money,
+  Histogram,
 } from '@element-plus/icons-vue';
 
 const routes = [
@@ -13,12 +15,12 @@ const routes = [
     redirect: '/window-control',
   },
   {
-    path: '/window-control',
-    name: 'WindowControl',
-    component: () => import('../views/WindowControl.vue'),
+    path: '/trading-monkey',
+    name: 'TradingMonkey',
+    component: () => import('../views/TradingMonkey.vue'),
     meta: {
-      title: '窗口控制调试',
-      icon: Monitor,
+      title: '交易猿',
+      icon: Money,
       showInNav: true,
     },
   },
@@ -27,7 +29,7 @@ const routes = [
     name: 'TradingStrategy',
     component: () => import('../views/TradingStrategy.vue'),
     meta: {
-      title: '交易策略',
+      title: '策略管理',
       icon: TrendCharts,
       showInNav: true,
     },
@@ -37,7 +39,7 @@ const routes = [
     name: 'StockPool',
     component: () => import('../views/StockPool.vue'),
     meta: {
-      title: '股票池管理',
+      title: '股票池',
       icon: DataLine,
       showInNav: true,
     },
@@ -53,11 +55,21 @@ const routes = [
     },
   },
   {
+    path: '/multi-stock-chart',
+    name: 'MultiStockChart',
+    component: () => import('../views/MultiStockChart.vue'),
+    meta: {
+      title: '多品种分时图',
+      icon: Histogram,
+      showInNav: true,
+    },
+  },
+  {
     path: '/llm-interface',
     name: 'LLMInterface',
     component: () => import('../views/LLMInterface.vue'),
     meta: {
-      title: 'deepseek',
+      title: 'LLM调试',
       icon: Connection,
       showInNav: true,
     },
@@ -79,6 +91,16 @@ const routes = [
     meta: {
       title: '数据更新',
       icon: Refresh,
+      showInNav: true,
+    },
+  },
+  {
+    path: '/window-control',
+    name: 'WindowControl',
+    component: () => import('../views/WindowControl.vue'),
+    meta: {
+      title: '窗口控制调试',
+      icon: Monitor,
       showInNav: true,
     },
   },

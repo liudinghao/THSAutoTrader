@@ -49,4 +49,35 @@ export default {
 .reason-tag {
   margin: 0;
 }
+
+/* 确保标签颜色正确应用 */
+:deep(.el-tag--success) {
+  background-color: var(--tag-success-bg) !important;
+  border-color: var(--tag-success-border) !important;
+  color: var(--tag-success-color) !important;
+}
+
+:deep(.el-tag--warning) {
+  background-color: var(--tag-warning-bg) !important;
+  border-color: var(--tag-warning-border) !important;
+  color: var(--tag-warning-color) !important;
+}
+
+:deep(.el-tag--danger) {
+  background-color: var(--tag-danger-bg) !important;
+  border-color: var(--tag-danger-border) !important;
+  color: var(--tag-danger-color) !important;
+}
+
+:deep(.el-tag--info) {
+  background-color: var(--tag-info-bg) !important;
+  border-color: var(--tag-info-border) !important;
+  color: var(--tag-info-color) !important;
+}
+
+:deep(.el-tag--primary) {
+  background-color: var(--tag-primary-bg) !important;
+  border-color: var(--tag-primary-border) !important;
+  color: var(--tag-primary-color) !important;
+}
 </style> 

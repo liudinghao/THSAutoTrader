@@ -1,95 +1,63 @@
 <template>
-  <div class="zt-tian-ti">
-    <div class="page-header">
-      <h2>连板天梯</h2>
-      <div class="header-actions">
-        <el-button type="primary" @click="refreshData" :loading="loading">
-          <el-icon><Refresh /></el-icon>
-          刷新数据
-        </el-button>
+  <div class="zt-tian-ti-new">
+    <!-- 顶部统计标签区 -->
+    <div class="zt-stats-bar">
+      <div
+        v-for="stat in statsList"
+        :key="stat.label"
+        class="zt-stat-tag"
+        :style="{ background: stat.bg, color: stat.color }"
+      >
+        <span class="zt-stat-label">{{ stat.label }}:</span>
+        <span class="zt-stat-value">{{ stat.value }}</span>
       </div>
     </div>
 
-    <div class="zt-tian-ti-content">
-      <div v-if="loading" class="loading-container">
-        <el-icon class="loading-icon"><Loading /></el-icon>
-        <p>数据加载中...</p>
+    <!-- 主体内容区 -->
+    <div class="zt-tian-ti-content-new">
+      <div v-if="loading" class="zt-loading">
+        <span class="zt-loading-spinner"></span>
+        <span>数据加载中...</span>
       </div>
-
-      <div v-else-if="!stockData.length" class="empty-container">
-        <el-icon class="empty-icon"><DataLine /></el-icon>
-        <p>暂无数据</p>
+      <div v-else-if="!stockData.length" class="zt-empty">
+        <span>暂无数据</span>
       </div>
-
-      <div v-else class="data-container">
-        <!-- 连板天梯表格 -->
-        <div class="tian-ti-table">
-          <div class="table-header">
-            <div class="header-cell">连板数</div>
-            <div class="header-cell">股票信息</div>
-            <div class="header-cell">涨停原因</div>
-            <div class="header-cell">首次涨停时间</div>
-            <div class="header-cell">最后涨停时间</div>
+      <div v-else class="zt-tian-ti-table-new">
+        <div
+          v-for="group in groupedStocks"
+          :key="group.zttj_days"
+          class="zt-tier-row"
+        >
+          <div class="zt-tier-label">
+            <span class="zt-tier-main">{{ group.zttj_days === 1 ? '首板' : group.zttj_days + '板' }}</span>
           </div>
-          
-          <div class="table-body">
-            <div 
-              v-for="stock in groupedStocks" 
-              :key="stock.zttj_days"
-              class="table-row"
+          <div class="zt-tier-stocks">
+            <div
+              v-for="item in group.stocks"
+              :key="item.id"
+              class="zt-stock-card"
+              :class="{ 'zt-stock-yizi': item.yizi }"
             >
-              <div class="row-header">
-                <div class="ban-count">{{ stock.zttj_days === 1 ? '首板' : stock.zttj_days + '连板' }}</div>
-                <div class="stock-count">({{ stock.stocks.length }}只)</div>
+              <div class="zt-stock-header">
+                <span class="zt-stock-name">{{ item.name }}</span>
+                <span v-if="item.yizi" class="zt-yizi-tag">一字</span>
               </div>
-              
-              <div class="stocks-container">
-                <div 
-                  v-for="item in stock.stocks" 
-                  :key="item.id"
-                  class="stock-item"
+              <div class="zt-stock-tags">
+                <span
+                  v-for="reason in getReasons(item.reason_type)"
+                  :key="reason"
+                  class="zt-reason-tag"
+                  :style="{ background: getTagColor(reason) }"
                 >
-                  <div class="stock-info">
-                    <div class="stock-name">{{ item.name }}</div>
-                    <div class="stock-code">{{ item.code }}</div>
-                  </div>
-                  <div class="stock-price">
-                    <span class="price">¥{{ item.price }}</span>
-                    <span class="change" :class="{ 'up': parseFloat(item.zdf) > 0, 'down': parseFloat(item.zdf) < 0 }">
-                      {{ item.zdf }}%
-                    </span>
-                  </div>
-                </div>
+                  {{ reason }}
+                </span>
               </div>
-              
-              <div class="reasons-container">
-                <div 
-                  v-for="item in stock.stocks" 
-                  :key="item.id"
-                  class="reason-tags"
-                >
-                  <el-tag 
-                    v-for="reason in getReasons(item.reason_type)" 
-                    :key="reason"
-                    size="small"
-                    :color="getTagColor(reason)"
-                    effect="dark"
-                    class="reason-tag"
-                  >
-                    {{ reason }}
-                  </el-tag>
-                </div>
+              <div class="zt-stock-meta">
+                <span class="zt-stock-time">{{ formatTime(item.first_zt_time) }}</span>
+                <span v-if="item.last_zt_time && item.last_zt_time !== item.first_zt_time" class="zt-stock-time">{{ formatTime(item.last_zt_time) }}</span>
               </div>
-              
-              <div class="time-container">
-                <div 
-                  v-for="item in stock.stocks" 
-                  :key="item.id"
-                  class="time-info"
-                >
-                  <div class="first-time">{{ formatTime(item.first_zt_time) }}</div>
-                  <div class="last-time">{{ formatTime(item.last_zt_time) }}</div>
-                </div>
+              <div class="zt-stock-extra">
+                <span v-if="item.extra" class="zt-stock-extra-label">{{ item.extra }}</span>
               </div>
             </div>
           </div>
@@ -101,103 +69,105 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import { Refresh, Loading, DataLine } from '@element-plus/icons-vue'
 
-// 响应式数据
 const loading = ref(false)
 const stockData = ref([])
+
+// 统计标签数据（可根据实际数据动态生成）
+const statsList = computed(() => {
+  // 统计逻辑示例，根据实际数据结构调整
+  const stats = [
+    { label: '泛金融', value: 0, bg: '#f56c6c', color: '#fff' },
+    { label: '稀土', value: 0, bg: '#ff9800', color: '#fff' },
+    { label: '光伏', value: 0, bg: '#e0f7fa', color: '#333' },
+    { label: '医药', value: 0, bg: '#e1bee7', color: '#333' },
+    { label: '金属', value: 0, bg: '#ffe082', color: '#333' },
+    { label: '地产基建', value: 0, bg: '#bdbdbd', color: '#333' },
+    { label: '军工', value: 0, bg: '#b0bec5', color: '#333' },
+    { label: '氢能', value: 0, bg: '#b2dfdb', color: '#333' },
+  ]
+  // 统计各类数量
+  stockData.value.forEach(item => {
+    if (item.reason_type && item.reason_type.includes('泛金融')) stats[0].value++
+    if (item.reason_type && item.reason_type.includes('稀土')) stats[1].value++
+    if (item.reason_type && item.reason_type.includes('光伏')) stats[2].value++
+    if (item.reason_type && item.reason_type.includes('医药')) stats[3].value++
+    if (item.reason_type && item.reason_type.includes('金属')) stats[4].value++
+    if (item.reason_type && item.reason_type.includes('地产基建')) stats[5].value++
+    if (item.reason_type && item.reason_type.includes('军工')) stats[6].value++
+    if (item.reason_type && item.reason_type.includes('氢能')) stats[7].value++
+  })
+  // 只显示有数量的标签
+  return stats.filter(s => s.value > 0)
+})
 
 // 获取数据
 const fetchData = async () => {
   loading.value = true
   try {
-    const response = await fetch('https://www.wttiao.com/moni/ztpool/get?startDate=2025-06-26')
+    const startDate = '2025-07-11'
+    const endDate = '2025-07-13'
+    const response = await fetch(`https://www.wttiao.com/moni/ztpool/get?startDate=${startDate}&endDate=${endDate}`)
     const result = await response.json()
-    
     if (result.code === 0) {
+      // 标记一字板
+      result.data.forEach(item => {
+        item.yizi = item.yz_flag === 1 || (item.yz_flag === undefined && item.name && item.name.includes('一字'))
+      })
       stockData.value = result.data || []
-      ElMessage.success('数据加载成功')
-    } else {
-      ElMessage.error(result.msg || '数据加载失败')
     }
-  } catch (error) {
-    console.error('获取数据失败:', error)
-    ElMessage.error('网络错误，请稍后重试')
+  } catch (e) {
+    // 错误处理
   } finally {
     loading.value = false
   }
 }
 
-// 刷新数据
-const refreshData = () => {
-  fetchData()
-}
-
-// 按连板数分组
+// 分组
 const groupedStocks = computed(() => {
   const groups = {}
-  
   stockData.value.forEach(stock => {
-    const days = stock.zttj_days
-    if (!groups[days]) {
-      groups[days] = {
-        zttj_days: days,
-        stocks: []
+    // 过滤连板：zttj_days 和 zttj_ct 相等表示连板
+    if (stock.zttj_days === stock.zttj_ct) {
+      const days = stock.zttj_days
+      if (!groups[days]) {
+        groups[days] = { zttj_days: days, stocks: [] }
       }
+      groups[days].stocks.push(stock)
     }
-    groups[days].stocks.push(stock)
   })
-  
-  // 按连板数降序排列
   return Object.values(groups).sort((a, b) => b.zttj_days - a.zttj_days)
 })
 
 // 解析涨停原因
 const getReasons = (reasonType) => {
   if (!reasonType) return []
-  return reasonType.split('+').filter(reason => reason.trim())
+  return reasonType.split('+').filter(r => r.trim())
 }
 
-// 获取标签颜色
+// 标签颜色
 const getTagColor = (reason) => {
   const colorMap = {
-    'AI': '#409EFF',
-    '芯片': '#67C23A',
-    '新能源': '#E6A23C',
-    '医药': '#F56C6C',
-    '军工': '#909399',
-    '金融': '#9C27B0',
-    '消费': '#FF9800',
-    '科技': '#2196F3',
-    '汽车': '#4CAF50',
-    '房地产': '#795548',
-    '农业': '#8BC34A',
-    '传媒': '#FF5722',
-    '教育': '#607D8B',
-    '环保': '#009688',
-    '物流': '#FFC107',
-    '游戏': '#9E9E9E',
-    '区块链': '#3F51B5',
-    '5G': '#00BCD4',
-    '物联网': '#FFEB3B',
-    '大数据': '#673AB7'
+    '泛金融': '#f56c6c',
+    '稀土': '#ff9800',
+    '光伏': '#7ec6f3',
+    '医药': '#b388ff',
+    '金属': '#ffd54f',
+    '地产基建': '#bdbdbd',
+    '军工': '#90a4ae',
+    '氢能': '#80cbc4',
+    '公告': '#e0e0e0',
+    '一字': '#e040fb',
   }
-  
-  // 根据关键词匹配颜色
   for (const [key, color] of Object.entries(colorMap)) {
-    if (reason.includes(key)) {
-      return color
-    }
+    if (reason.includes(key)) return color
   }
-  
-  // 默认颜色
-  return '#909399'
+  return '#e0e0e0'
 }
 
-// 格式化时间
+// 时间格式
 const formatTime = (timeStr) => {
-  if (!timeStr) return '-'
+  if (!timeStr) return ''
   const time = timeStr.toString()
   if (time.length === 5) {
     return `${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4)}`
@@ -205,294 +175,220 @@ const formatTime = (timeStr) => {
   return timeStr
 }
 
-// 页面加载时获取数据
 onMounted(() => {
   fetchData()
 })
 </script>
 
 <style scoped>
-.zt-tian-ti {
-  padding: 24px;
+.zt-tian-ti-new {
+  padding: 24px 0;
   background: #f5f7fa;
   min-height: 100vh;
 }
-
-.page-header {
+.zt-stats-bar {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
   margin-bottom: 24px;
+  justify-content: flex-start;
 }
-
-.page-header h2 {
-  margin: 0;
-  color: #303133;
-  font-size: 24px;
+.zt-stat-tag {
+  display: flex;
+  align-items: center;
+  border-radius: 16px;
+  padding: 4px 16px;
+  font-size: 15px;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  min-width: 70px;
+  justify-content: center;
 }
-
-.zt-tian-ti-content {
+.zt-stat-label {
+  margin-right: 4px;
+}
+.zt-stat-value {
+  font-size: 17px;
+  font-weight: bold;
+}
+.zt-tian-ti-content-new {
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+  padding: 0 0 24px 0;
+}
+.zt-loading, .zt-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 0;
+  color: #909399;
+  font-size: 16px;
+}
+.zt-loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 4px solid #e0e0e0;
+  border-top: 4px solid #409eff;
+  border-radius: 50%;
+  animation: zt-spin 1s linear infinite;
+  margin-bottom: 12px;
+}
+@keyframes zt-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.zt-tian-ti-table-new {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  padding: 24px 24px 0 24px;
+}
+.zt-tier-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+.zt-tier-label {
+  min-width: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  font-size: 20px;
+  font-weight: bold;
+  color: #409eff;
+  margin-top: 8px;
+}
+.zt-tier-main {
+  border-radius: 8px;
+  background: #e3f2fd;
+  padding: 6px 16px;
+  font-size: 18px;
+  color: #1976d2;
+  font-weight: 700;
+}
+.zt-tier-stocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  flex: 1;
+}
+.zt-stock-card {
   background: #fff;
   border-radius: 12px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-  overflow: hidden;
-}
-
-.loading-container,
-.empty-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  color: #909399;
-}
-
-.loading-icon,
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: #c0c4cc;
-}
-
-.data-container {
-  padding: 0;
-}
-
-.tian-ti-table {
-  width: 100%;
-}
-
-.table-header {
-  display: grid;
-  grid-template-columns: 120px 1fr 2fr 200px;
-  background: #fafafa;
-  border-bottom: 1px solid #ebeef5;
-  font-weight: 600;
-  color: #606266;
-}
-
-.header-cell {
-  padding: 16px 12px;
-  text-align: center;
-  border-right: 1px solid #ebeef5;
-}
-
-.header-cell:last-child {
-  border-right: none;
-}
-
-.table-body {
-  max-height: calc(100vh - 200px);
-  overflow-y: auto;
-}
-
-.table-row {
-  display: grid;
-  grid-template-columns: 120px 1fr 2fr 200px;
-  border-bottom: 1px solid #ebeef5;
-  transition: background-color 0.3s;
-}
-
-.table-row:hover {
-  background-color: #f5f7fa;
-}
-
-.row-header {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 16px 12px;
-  background: #f0f9ff;
-  border-right: 1px solid #ebeef5;
-  min-height: 80px;
-}
-
-.ban-count {
-  font-size: 18px;
-  font-weight: 600;
-  color: #409eff;
-  margin-bottom: 4px;
-}
-
-.stock-count {
-  font-size: 12px;
-  color: #909399;
-}
-
-.stocks-container,
-.reasons-container,
-.time-container {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  padding: 14px 18px 10px 18px;
+  min-width: 160px;
+  max-width: 200px;
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
-  border-right: 1px solid #ebeef5;
+  position: relative;
+  transition: box-shadow 0.2s, transform 0.2s;
+  border: 1.5px solid #e3e3e3;
 }
-
-.stocks-container {
-  grid-column: 2;
+.zt-stock-card:hover {
+  box-shadow: 0 4px 16px rgba(64,158,255,0.13);
+  transform: translateY(-2px) scale(1.03);
+  border-color: #90caf9;
 }
-
-.reasons-container {
-  grid-column: 3;
-}
-
-.time-container {
-  grid-column: 4;
-  border-right: none;
-}
-
-.stock-item {
+.zt-stock-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 8px 12px;
-  background: #f8f9fa;
+  gap: 8px;
+}
+.zt-stock-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: #222;
+}
+.zt-yizi-tag {
+  background: #e040fb;
+  color: #fff;
   border-radius: 6px;
-  border: 1px solid #e9ecef;
-}
-
-.stock-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.stock-name {
-  font-weight: 600;
-  color: #303133;
-  font-size: 14px;
-}
-
-.stock-code {
   font-size: 12px;
-  color: #909399;
-}
-
-.stock-price {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-}
-
-.price {
+  padding: 2px 8px;
   font-weight: 600;
-  color: #303133;
-  font-size: 14px;
+  margin-left: 2px;
 }
-
-.change {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.change.up {
-  color: #f56c6c;
-}
-
-.change.down {
-  color: #67c23a;
-}
-
-.reason-tags {
+.zt-stock-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
-  padding: 8px 12px;
-  background: #f8f9fa;
+  gap: 6px;
+}
+.zt-reason-tag {
   border-radius: 6px;
-  border: 1px solid #e9ecef;
-}
-
-.reason-tag {
-  margin: 0;
-  font-size: 11px;
-}
-
-.time-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 8px 12px;
-  background: #f8f9fa;
-  border-radius: 6px;
-  border: 1px solid #e9ecef;
-  text-align: center;
-}
-
-.first-time,
-.last-time {
+  padding: 2px 10px;
   font-size: 12px;
-  color: #606266;
-}
-
-.first-time {
+  color: #fff;
   font-weight: 600;
-  color: #409eff;
+  background: #bdbdbd;
 }
-
-/* 响应式设计 */
-@media (max-width: 1200px) {
-  .table-header {
-    grid-template-columns: 100px 1fr 1.5fr 150px;
+.zt-stock-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #888;
+}
+.zt-stock-extra {
+  margin-top: 2px;
+}
+.zt-stock-extra-label {
+  font-size: 12px;
+  color: #ff9800;
+  font-weight: 600;
+}
+.zt-stock-yizi {
+  border: 2px solid #e040fb;
+}
+@media (max-width: 900px) {
+  .zt-tian-ti-table-new {
+    padding: 12px 4px 0 4px;
   }
-  
-  .header-cell {
-    padding: 12px 8px;
-    font-size: 13px;
+  .zt-tier-stocks {
+    gap: 8px;
   }
-  
-  .row-header {
-    padding: 12px 8px;
+  .zt-stock-card {
+    min-width: 120px;
+    max-width: 150px;
+    padding: 10px 8px 8px 8px;
   }
-  
-  .ban-count {
+  .zt-tier-label {
     font-size: 16px;
   }
 }
-
-@media (max-width: 768px) {
-  .zt-tian-ti {
-    padding: 16px;
+@media (max-width: 600px) {
+  .zt-tian-ti-new {
+    padding: 8px 0;
   }
-  
-  .page-header {
-    flex-direction: column;
-    gap: 16px;
-    align-items: flex-start;
+  .zt-stats-bar {
+    gap: 6px;
+    margin-bottom: 12px;
   }
-  
-  .table-header {
-    grid-template-columns: 80px 1fr 1fr 120px;
+  .zt-tian-ti-table-new {
+    gap: 18px;
+    padding: 4px 0 0 0;
   }
-  
-  .header-cell {
-    padding: 8px 4px;
-    font-size: 12px;
-  }
-  
-  .row-header {
-    padding: 8px 4px;
-  }
-  
-  .ban-count {
-    font-size: 14px;
-  }
-  
-  .stock-item {
-    padding: 6px 8px;
-  }
-  
-  .stock-name {
+  .zt-tier-label {
+    min-width: 40px;
     font-size: 13px;
   }
-  
-  .stock-code {
-    font-size: 11px;
+  .zt-tier-main {
+    font-size: 13px;
+    padding: 4px 8px;
+  }
+  .zt-stock-card {
+    min-width: 90px;
+    max-width: 120px;
+    padding: 6px 4px 4px 4px;
+  }
+  .zt-stock-name {
+    font-size: 12px;
+  }
+  .zt-reason-tag {
+    font-size: 10px;
+    padding: 1px 5px;
   }
 }
 </style> 
