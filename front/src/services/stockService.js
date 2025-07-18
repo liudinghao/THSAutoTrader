@@ -289,7 +289,7 @@ export class StockService {
         method: 'Quote.request',
         data: {
           code: stockCodes,
-          type: ['NEW', 'PRE', 'ZHANGDIEFU'],
+          type: ['NEW', 'ZHANGDIEFU'],
           period: 'now',
         },
         callbackName: 'onready',
@@ -299,14 +299,35 @@ export class StockService {
             method: 'Quote.getData2',
             data: {
               code: stockCodes,
-              type: ['NEW', 'PRE', 'ZHANGDIEFU'],
+              type: ['NEW', 'ZHANGDIEFU'],
               period: 'now',
               mode: 'after',
             },
             success: (res) => {
               try {
                 const parsedData = JSON.parse(res);
-                resolve(parsedData);
+
+                // 通过NEW和ZHANGDIEFU计算昨收价
+                const processedData = {};
+                for (const [code, data] of Object.entries(parsedData)) {
+                  const newPrice = parseFloat(data.NEW);
+                  const zhangdiefu = parseFloat(data.ZHANGDIEFU);
+
+                  // 计算昨收价：昨收价 = 当前价格 / (1 + 涨跌幅/100)
+                  let prePrice = null;
+                  if (!isNaN(newPrice) && !isNaN(zhangdiefu)) {
+                    prePrice = newPrice / (1 + zhangdiefu / 100);
+                    prePrice = parseFloat(prePrice.toFixed(4)); // 保留4位小数
+                  }
+
+                  processedData[code] = {
+                    NEW: data.NEW,
+                    PRE: prePrice ? prePrice.toString() : null,
+                    ZHANGDIEFU: data.ZHANGDIEFU,
+                  };
+                }
+
+                resolve(processedData);
               } catch (error) {
                 console.error('解析实时行情数据失败:', error);
                 reject(error);

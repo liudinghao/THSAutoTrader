@@ -1,7 +1,7 @@
 <template>
   <div class="multi-stock-chart">
     <div class="header">
-      <h2>多品种分时图</h2>
+      <h2>叠加分时图</h2>
       <div class="header-controls">
         <el-button 
           type="primary" 
@@ -21,7 +21,7 @@
         placeholder="选择市场"
         style="width: 120px; margin-right: 10px"
       >
-        <el-option label="沪深A股" value="17" />
+        <el-option label="沪市A股" value="17" />
         <el-option label="深市A股" value="33" />
         <el-option label="港股" value="177" />
         <el-option label="港股基金" value="20" />
@@ -45,7 +45,7 @@
       <IntradayChart 
         :stock-data="stockList"
         :loading="isLoading"
-        height="400px"
+        height="500px"
         @chartUpdate="onChartUpdate"
         ref="intradayChartRef"
       />
@@ -108,7 +108,7 @@ const STORAGE_KEY = 'multiStockChart_stockList'
 
 // 市场ID映射
 const marketMap = {
-  '17': '沪深A股',
+  '17': '沪市A股',
   '33': '深市A股', 
   '177': '港股',
   '20': '港股基金'
@@ -163,8 +163,8 @@ const addStock = async () => {
   saveToLocalStorage()
   
   // 获取新添加股票的分时数据
-  await fetchMinuteData([newStock])
-  updateChart()
+  await fetchMinuteData()
+  // 数据更新后，IntradayChart 的 watch 会自动触发更新
 }
 
 const removeStock = (index) => {
@@ -172,7 +172,7 @@ const removeStock = (index) => {
   // 重新分配颜色以确保顺序正确
   ensureStockColors()
   saveToLocalStorage()
-  updateChart()
+  // 数据更新后，IntradayChart 的 watch 会自动触发更新
 }
 
 
@@ -242,10 +242,8 @@ const startAutoRefresh = () => {
         // 只刷新分时数据，不重新获取昨收价
         await refreshMinuteDataOnly()
         
-        // 添加短暂延迟确保数据更新完成
-        setTimeout(() => {
-          updateChart()
-        }, 100)
+        // 数据更新后，IntradayChart 的 watch 会自动触发更新，无需手动调用
+        console.log('定时刷新完成，等待图表自动更新')
       } catch (error) {
         console.error('定时刷新数据失败:', error)
       }
@@ -273,6 +271,7 @@ const refreshMinuteDataOnly = async () => {
     if (data) {
       // 创建新的股票列表来触发响应式更新
       const updatedStockList = [...stockList.value]
+      let hasUpdates = false
       
       updatedStockList.forEach((stock, index) => {
         const stockKey = `${stock.marketId}:${stock.code}`
@@ -303,10 +302,26 @@ const refreshMinuteDataOnly = async () => {
             ]
           }).sort((a, b) => new Date(`2025/01/01 ${a[0]}`) - new Date(`2025/01/01 ${b[0]}`)) // 按时间排序
           
+          // 保存原始数据用于计算均价线等
+          const rawData = {}
+          Object.entries(stockData).forEach(([timestamp, values]) => {
+            const date = new Date(parseInt(timestamp) * 1000)
+            const hours = date.getHours().toString().padStart(2, '0')
+            const minutes = date.getMinutes().toString().padStart(2, '0')
+            const timeStr = `${hours}:${minutes}:00`
+            rawData[timeStr] = {
+              NEW: values.NEW,
+              JUNJIA: values.JUNJIA,
+              VOL: values.VOL,
+              money: values.money
+            }
+          })
+          
           // 更新股票对象
           updatedStockList[index] = {
             ...stock,
-            minuteData: chartData
+            minuteData: chartData,
+            rawData: rawData
           }
           
           // 更新股票的最新价格和涨跌幅
@@ -322,12 +337,15 @@ const refreshMinuteDataOnly = async () => {
           }
           
           console.log(`股票 ${stock.code} 转换后的分时数据:`, chartData.slice(0, 3))
+          hasUpdates = true
         }
       })
       
-      // 强制更新股票列表以触发响应式更新
-      stockList.value = updatedStockList
-      console.log('股票列表已更新，触发响应式更新')
+      // 只有在有更新时才强制更新股票列表以触发响应式更新
+      if (hasUpdates) {
+        stockList.value.splice(0, stockList.value.length, ...updatedStockList)
+        console.log('股票列表已更新，触发响应式更新')
+      }
     }
   } catch (error) {
     console.error('刷新分时数据失败:', error)
@@ -359,25 +377,31 @@ const fetchPreClose = async (stockList) => {
 }
 
 // 获取真实分时数据
-const fetchMinuteData = async (stockList) => {
-  if (stockList.length === 0) return
+const fetchMinuteData = async () => {
+  if (stockList.value.length === 0) return
   
   try {
     isLoading.value = true
     
     // 首先获取昨收价
-    await fetchPreClose(stockList)
+    await fetchPreClose(stockList.value)
     
-    const data = await stockService.fetchMultipleStocksMinuteData(stockList)
+    const data = await stockService.fetchMultipleStocksMinuteData(stockList.value)
     // 处理返回的数据
     if (data) {
-      stockList.forEach(stock => {
+      // 创建新的股票列表来触发响应式更新
+      const updatedStockList = [...stockList.value]
+      
+      updatedStockList.forEach((stock, index) => {
         const stockKey = `${stock.marketId}:${stock.code}`
         const stockData = data[stockKey]
         
         if (stockData) {
-          // 转换数据格式为 ECharts 需要的格式，使用涨跌幅作为Y轴数据
-          const chartData = Object.entries(stockData).map(([timestamp, values]) => {
+          // 转换数据格式为 ECharts 需要的格式，同时保留原始数据
+          const chartData = []
+          const rawData = {}
+          
+          Object.entries(stockData).forEach(([timestamp, values]) => {
             // 将时间戳转换为时分字符串，格式为 HH:mm:00（与时间轴格式保持一致）
             const date = new Date(parseInt(timestamp) * 1000)
             const hours = date.getHours().toString().padStart(2, '0')
@@ -393,14 +417,29 @@ const fetchMinuteData = async (stockList) => {
               changePercent = ((currentPrice - preClose) / preClose) * 100
             }
             
-            return [
+            chartData.push([
               timeStr, // 使用时分字符串，格式为 HH:mm:00
               parseFloat(changePercent.toFixed(2)) // 涨跌幅作为Y轴数据
-            ]
-          }).sort((a, b) => new Date(`2025/01/01 ${a[0]}`) - new Date(`2025/01/01 ${b[0]}`)) // 按时间排序
+            ])
+            
+            // 保存原始数据用于计算均价线等
+            rawData[timeStr] = {
+              NEW: values.NEW,
+              JUNJIA: values.JUNJIA,
+              VOL: values.VOL,
+              money: values.money
+            }
+          })
           
-          // 直接存储到股票对象中
-          stock.minuteData = chartData
+          // 按时间排序
+          chartData.sort((a, b) => new Date(`2025/01/01 ${a[0]}`) - new Date(`2025/01/01 ${b[0]}`))
+          
+          // 更新股票对象
+          updatedStockList[index] = {
+            ...stock,
+            minuteData: chartData,
+            rawData: rawData
+          }
           
           // 更新股票的最新价格和涨跌幅
           if (chartData.length > 0) {
@@ -409,11 +448,15 @@ const fetchMinuteData = async (stockList) => {
             const latestPrice = parseFloat(latestTimeData?.NEW || latestTimeData?.JUNJIA || 0)
             const latestChange = chartData[chartData.length - 1][1]
             
-            stock.price = latestPrice.toFixed(3)
-            stock.change = latestChange.toFixed(2)
+            updatedStockList[index].price = latestPrice.toFixed(3)
+            updatedStockList[index].change = latestChange.toFixed(2)
           }
         }
       })
+      
+      // 强制更新股票列表以触发响应式更新
+      stockList.value.splice(0, stockList.value.length, ...updatedStockList)
+      console.log('fetchMinuteData: 股票列表已更新，触发响应式更新')
     }
   } catch (error) {
     console.error('获取分时数据失败:', error)
@@ -431,13 +474,18 @@ const refreshData = async () => {
     return
   }
   
-  // 清空所有股票的分时数据
-  stockList.value.forEach(stock => {
-    stock.minuteData = []
-  })
+  // 创建新的股票列表，清空分时数据
+  const updatedStockList = stockList.value.map(stock => ({
+    ...stock,
+    minuteData: [],
+    rawData: {}
+  }))
   
-  await fetchMinuteData(stockList.value)
-  updateChart()
+  // 更新股票列表
+  stockList.value.splice(0, stockList.value.length, ...updatedStockList)
+  
+  await fetchMinuteData()
+  // 数据更新后，IntradayChart 的 watch 会自动触发更新
   ElMessage.success('数据刷新成功')
 }
 
@@ -459,7 +507,7 @@ onMounted(async () => {
   
   // 如果有保存的股票数据，获取分时数据
   if (stockList.value.length > 0) {
-    await fetchMinuteData(stockList.value)
+    await fetchMinuteData()
   }
   
   startAutoRefresh() // 启动定时刷新
@@ -469,7 +517,12 @@ onUnmounted(() => {
   stopAutoRefresh() // 卸载时停止定时刷新
 })
 
-watch(stockList, () => {
+watch(stockList, (newVal, oldVal) => {
+  console.log('stockList 发生变化:', {
+    newLength: newVal.length,
+    oldLength: oldVal?.length,
+    hasMinuteData: newVal.some(stock => stock.minuteData && stock.minuteData.length > 0)
+  })
   // IntradayChart 会自动响应数据变化，无需手动更新
 }, { deep: true })
 </script>

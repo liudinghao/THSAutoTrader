@@ -56,7 +56,7 @@ const generateAStockTimeAxis = () => {
 
 const timeAxis = generateAStockTimeAxis()
 
-// 处理原有数据格式的分时数据
+// 处理分时数据，支持JUNJIA均线
 const processStockData = (stock) => {
   if (!stock.minuteData || stock.minuteData.length === 0) {
     return {
@@ -64,10 +64,60 @@ const processStockData = (stock) => {
       volumes: [],
       avgPrice: [],
       change: [],
-      changePercent: []
+      changePercent: [],
+      junjia: [],
+      rawData: {}
     }
   }
 
+  const preClose = parseFloat(stock.preClose) || 0
+  
+  // 如果是新的数据格式（包含原始分时数据）
+  if (stock.rawData) {
+    const prices = []
+    const volumes = []
+    const avgPrice = []
+    const change = []
+    const changePercent = []
+    const junjia = []
+    timeAxis.forEach(time => {
+      const rawItem = stock.rawData[time]
+      if (rawItem) {
+        const newPrice = parseFloat(rawItem.NEW || 0)
+        const junjiaPrice = parseFloat(rawItem.JUNJIA || newPrice)
+        const volume = parseFloat(rawItem.VOL || 0)
+        
+        prices.push(newPrice)
+        junjia.push(junjiaPrice)
+        volumes.push(volume)
+        
+        if (preClose > 0) {
+          const pct = ((newPrice - preClose) / preClose) * 100
+          changePercent.push(parseFloat(pct.toFixed(2)))
+          change.push(parseFloat((newPrice - preClose).toFixed(3)))
+        } else {
+          changePercent.push(0)
+          change.push(0)
+        }
+      } else {
+        prices.push(null)
+        junjia.push(null)
+        volumes.push(null)
+        changePercent.push(null)
+        change.push(null)
+      }
+    })
+    return {
+      prices,
+      volumes,
+      avgPrice,
+      change,
+      changePercent,
+      junjia,
+      rawData: stock.rawData
+    }
+  }
+  
   // 原有数据格式: [timeStr, changePercent]
   const dataMap = new Map(stock.minuteData.map(item => [item[0], item[1]]))
   
@@ -76,8 +126,7 @@ const processStockData = (stock) => {
   const avgPrice = []
   const change = []
   const changePercent = []
-  
-  const preClose = parseFloat(stock.preClose) || 0
+  const junjia = []
   
   timeAxis.forEach((time, index) => {
     const changePct = dataMap.get(time)
@@ -88,27 +137,59 @@ const processStockData = (stock) => {
       
       // 根据涨跌幅反推价格
       const price = preClose > 0 ? preClose * (1 + pctValue / 100) : 0
-      prices.push(price.toFixed(3))
-      change.push((price - preClose).toFixed(3))
+      prices.push(parseFloat(price.toFixed(3)))
+      change.push(parseFloat((price - preClose).toFixed(3)))
+      junjia.push(parseFloat(price.toFixed(3))) // 简化的均线
       
-      // 简化的均价和成交量（由于原数据格式限制）
-      avgPrice.push(price.toFixed(3))
-      volumes.push(0) // 原数据没有成交量
+      volumes.push(null) // 原数据没有成交量
     } else {
       prices.push(null)
-      volumes.push(0)
-      avgPrice.push(null)
+      junjia.push(null)
+      volumes.push(null)
       changePercent.push(null)
       change.push(null)
     }
   })
   
   return {
-    prices: prices.map(p => p !== null ? parseFloat(p) : null),
+    prices,
     volumes,
-    avgPrice: avgPrice.map(p => p !== null ? parseFloat(p) : null),
-    change: change.map(c => c !== null ? parseFloat(c) : null),
-    changePercent: changePercent.map(c => c !== null ? parseFloat(c) : null)
+    avgPrice,
+    change,
+    changePercent,
+    junjia,
+    rawData: {}
+  }
+}
+
+// 处理多只股票的涨跌幅数据
+const processMultiStockData = () => {
+  if (!props.stockData || props.stockData.length === 0) {
+    return {
+      mainStock: null,
+      otherStocks: []
+    }
+  }
+
+  const mainStock = processStockData(props.stockData[0])
+  const otherStocks = []
+
+  // 处理其他股票的涨跌幅数据
+  for (let i = 1; i < props.stockData.length; i++) {
+    const stock = props.stockData[i]
+    const processedData = processStockData(stock)
+    
+    otherStocks.push({
+      stock: stock,
+      changePercent: processedData.changePercent,
+      name: stock.name,
+      code: stock.code
+    })
+  }
+
+  return {
+    mainStock,
+    otherStocks
   }
 }
 
@@ -143,32 +224,164 @@ const calculateVolumeRange = (volumes) => {
   }
 }
 
-// 更新双Y轴分时图 - 左轴价格，右轴涨跌幅
-const updateProfessionalChart = () => {
-  if (!chart.value || !props.stockData?.length) return
-
-  const stock = props.stockData[0]
-  if (!stock) return
-
-  const processedData = processStockData(stock)
-  const preClose = parseFloat(stock.preClose) || 0
+// 计算多股票涨跌幅范围
+const calculateMultiStockChangeRange = (mainStock, otherStocks) => {
+  let allChanges = []
   
-  // 计算价格范围
-  const priceRange = calculatePriceRange(processedData.prices, preClose)
+  // 添加主股票的涨跌幅
+  if (mainStock) {
+    allChanges = allChanges.concat(mainStock.changePercent.filter(c => c !== null))
+  }
   
-  // 计算涨跌幅范围（±5%的边界）
-  const maxChange = Math.max(...processedData.changePercent.filter(c => c !== null))
-  const minChange = Math.min(...processedData.changePercent.filter(c => c !== null))
+  // 添加其他股票的涨跌幅
+  otherStocks.forEach(stockData => {
+    allChanges = allChanges.concat(stockData.changePercent.filter(c => c !== null))
+  })
+  
+  if (allChanges.length === 0) {
+    return { min: -5, max: 5 }
+  }
+  
+  const maxChange = Math.max(...allChanges)
+  const minChange = Math.min(...allChanges)
   const changePadding = Math.max(Math.abs(maxChange), Math.abs(minChange)) * 0.1
-  const changeRange = {
+  
+  return {
     min: Math.min(-changePadding, minChange - changePadding),
     max: Math.max(changePadding, maxChange + changePadding)
   }
+}
+
+// 生成股票颜色
+const generateStockColors = (count) => {
+  const colors = [
+    '#1890ff', '#f56c6c', '#67c23a', '#e6a23c', '#909399',
+    '#ff7875', '#95de64', '#ffc53d', '#b37feb', '#ff85c0'
+  ]
+  
+  const result = []
+  for (let i = 0; i < count; i++) {
+    result.push(colors[i % colors.length])
+  }
+  return result
+}
+
+// 更新专业分时图 - 支持多股票叠加
+const updateProfessionalChart = () => {
+  if (!chart.value || !props.stockData?.length) return
+
+  const multiStockData = processMultiStockData()
+  const { mainStock, otherStocks } = multiStockData
+  
+  if (!mainStock) return
+
+  const stock = props.stockData[0]
+  const preClose = parseFloat(stock.preClose) || 0
+  
+  // 计算价格范围
+  const priceRange = calculatePriceRange(mainStock.prices, preClose)
+  
+  // 计算多股票涨跌幅范围
+  const changeRange = calculateMultiStockChangeRange(mainStock, otherStocks)
+
+  // 计算成交量范围
+  const validVolumes = mainStock.volumes.filter(v => v !== null && v > 0)
+  const maxVolume = validVolumes.length > 0 ? Math.max(...validVolumes) : 0
+  const volumeRange = {
+    max: maxVolume > 0 ? maxVolume * 1.2 : 1000
+  }
+
+  // 生成标记线 - 零轴线和昨收价线
+  const markLine = {
+    silent: true,
+    symbol: 'none',
+    label: {
+      show: false
+    },
+    lineStyle: {
+      color: '#000000',
+      width: 1,
+      type: 'solid'
+    },
+    data: [
+      {
+        yAxis: preClose,
+        lineStyle: { color: '#000000', width: 1 }
+      }
+    ]
+  }
+
+  // 生成系列数据
+  const series = []
+  const stockColors = generateStockColors(1 + otherStocks.length)
+  
+  // 主股票的价格线
+  series.push({
+    name: `${stock.name}(${stock.code})`,
+    type: 'line',
+    data: mainStock.prices,
+    smooth: false,
+    symbol: 'none',
+    lineStyle: {
+      color: stockColors[0],
+      width: 2
+    },
+    markLine: markLine
+  })
+  
+  // 主股票的均价线（不显示在图例中）
+  series.push({
+    name: `${stock.name}(${stock.code}) 均价`,
+    type: 'line',
+    data: mainStock.junjia,
+    smooth: false,
+    symbol: 'none',
+    lineStyle: {
+      color: '#FFB400',
+      width: 1,
+      type: 'solid'
+    },
+    legendHoverLink: false
+  })
+  
+  // 主股票的成交量（不显示在图例中）
+  series.push({
+    name: `${stock.name}(${stock.code}) 成交量`,
+    type: 'bar',
+    xAxisIndex: 1,
+    yAxisIndex: 2,
+    data: mainStock.volumes.map(v => v !== null ? v : 0),
+    itemStyle: {
+      color: function(params) {
+        const priceChange = mainStock.changePercent[params.dataIndex] || 0
+        return priceChange >= 0 ? '#f56c6c' : '#67c23a'
+      }
+    },
+    barWidth: '60%',
+    legendHoverLink: false
+  })
+  
+  // 其他股票的涨跌幅线
+  otherStocks.forEach((stockData, index) => {
+    series.push({
+      name: `${stockData.name}(${stockData.code})`,
+      type: 'line',
+      yAxisIndex: 1, // 使用右侧Y轴（涨跌幅轴）
+      data: stockData.changePercent,
+      smooth: false,
+      symbol: 'none',
+      lineStyle: {
+        color: stockColors[index + 1],
+        width: 1
+      }
+    })
+  })
 
   const option = {
     animation: false,
     title: {
-      text: `${stock.name}(${stock.code}) 分时图`,
+      show: false,
+      text: `${stock.name}(${stock.code}) 分时图${otherStocks.length > 0 ? ` + ${otherStocks.length}只股票对比` : ''}`,
       left: 'center',
       textStyle: {
         fontSize: 16,
@@ -177,6 +390,7 @@ const updateProfessionalChart = () => {
     },
     tooltip: {
       trigger: 'axis',
+      show: false,
       axisPointer: {
         type: 'cross',
         lineStyle: {
@@ -194,59 +408,147 @@ const updateProfessionalChart = () => {
       },
       formatter: function(params) {
         const time = params[0]?.axisValue
-        const changePct = params[0]?.value
-        if (changePct === null || changePct === undefined) return ''
+        let result = `<div style="font-weight: bold; margin-bottom: 5px">${time}</div>`
         
-        const price = preClose > 0 ? preClose * (1 + changePct / 100) : 0
+        params.forEach(param => {
+          if (param.value !== null && param.value !== 0) {
+            let color = '#666'
+            let content = ''
+            
+            if (param.seriesName.includes('均价')) {
+              color = '#ff6600'
+              content = `${param.seriesName}: ¥${param.value.toFixed(3)}`
+            } else if (param.seriesName.includes('成交量')) {
+              if (param.value > 0) {
+                color = '#8c8c8c'
+                content = `${param.seriesName}: ${param.value.toLocaleString()}`
+              }
+            } else {
+              // 主股票价格线或其他股票涨跌幅线
+              if (param.seriesIndex === 0) {
+                // 主股票价格线
+                const price = preClose > 0 ? preClose * (1 + param.value / 100) : 0
+                color = param.value >= 0 ? '#f56c6c' : '#67c23a'
+                content = `${param.seriesName} 价格: ¥${price.toFixed(3)}`
+              } else {
+                // 其他股票涨跌幅线
+                color = param.value >= 0 ? '#f56c6c' : '#67c23a'
+                content = `${param.seriesName} 涨跌幅: ${param.value.toFixed(2)}%`
+              }
+            }
+            
+            if (content) {
+              result += `<div style="color: ${color}">${content}</div>`
+            }
+          }
+        })
         
-        return `<div style="font-weight: bold; margin-bottom: 5px">${time}</div>
-                <div style="color: ${changePct >= 0 ? '#f56c6c' : '#67c23a'};">价格: ¥${price.toFixed(3)}</div>
-                <div style="color: ${changePct >= 0 ? '#f56c6c' : '#67c23a'};">涨跌幅: ${changePct > 0 ? '+' : ''}${changePct.toFixed(2)}%</div>`
+        return result
       }
     },
-    grid: {
-      left: '15%',
-      right: '15%',
-      top: '15%',
-      bottom: '15%',
-      containLabel: true
+    legend: {
+      data: [
+        `${stock.name}(${stock.code})`,
+        ...otherStocks.map(s => `${s.name}(${s.code})`)
+      ],
+      top: 30,
+      textStyle: {
+        fontSize: 12
+      }
     },
-    xAxis: {
-      type: 'category',
-      data: timeAxis,
-      boundaryGap: false,
-      axisLine: { onZero: false },
-      splitLine: { show: false },
-      axisLabel: {
-        interval: 29,
-        formatter: function(value) {
-          return value.endsWith(':00:00') ? value.substring(0, 5) : ''
+    axisPointer: {
+      link: [
+        {
+          xAxisIndex: 'all'
+        }
+      ],
+      label: {
+        backgroundColor: '#777'
+      }
+    },
+    grid: [
+      {
+        left: '10%',
+        right: '8%',
+        height: '60%',
+        top: '15%'
+      },
+      {
+        left: '10%',
+        right: '8%',
+        top: '80%',
+        height: '15%'
+      }
+    ],
+    xAxis: [
+      {
+        type: 'category',
+        data: timeAxis,
+        boundaryGap: false,
+        axisLine: {
+          onZero: false,
+          lineStyle: { color: '#333' }
+        },
+        splitLine: {
+          show: true,
+          lineStyle: { color: '#f5f5f5' }
+        },
+        axisLabel: {
+          interval: function(index, value) {
+            return index % 30 === 0
+          },
+          formatter: function(value) {
+            return value.substring(0, 5)
+          },
+          color: '#666'
+        },
+        axisTick: {
+          alignWithLabel: true
+        },
+        axisPointer: {
+          z: 100
         }
       },
-      min: 'dataMin',
-      max: 'dataMax'
-    },
+      {
+        type: 'category',
+        gridIndex: 1,
+        data: timeAxis,
+        boundaryGap: false,
+        axisLine: {
+          onZero: false,
+          lineStyle: { color: '#333' }
+        },
+        axisTick: {
+          show: false
+        },
+        splitLine: {
+          show: false
+        },
+        axisLabel: {
+          show: false
+        }
+      }
+    ],
     yAxis: [
       {
         type: 'value',
         name: '价格',
-        position: 'left',
         axisLine: {
           show: true,
           lineStyle: { color: '#777' }
         },
-        splitLine: { 
-          show: true, 
-          lineStyle: { color: '#eee', type: 'dashed' } 
+        splitLine: {
+          show: true,
+          lineStyle: { color: '#eee', type: 'dashed' }
         },
         axisLabel: {
           formatter: function(value) {
-            return '¥' + value.toFixed(3)
+            return value.toFixed(3)
           },
           color: '#333'
         },
-        min: priceRange.min,
-        max: priceRange.max,
+        min: Math.max(0, priceRange.min),
+        max: Math.max(priceRange.max, priceRange.min + 0.01),
         scale: true
       },
       {
@@ -266,137 +568,36 @@ const updateProfessionalChart = () => {
             return value > 0 ? '#f56c6c' : (value < 0 ? '#67c23a' : '#666')
           }
         },
-        min: changeRange.min,
-        max: changeRange.max,
+        min: Math.max(-20, changeRange.min),
+        max: Math.min(20, changeRange.max),
+        scale: true
+      },
+      {
+        type: 'value',
+        name: '成交量',
+        gridIndex: 1,
+        splitNumber: 2,
+        axisLabel: {
+          show: false
+        },
+        axisLine: {
+          show: false
+        },
+        axisTick: {
+          show: false
+        },
+        splitLine: {
+          show: false
+        },
+        min: 0,
+        max: volumeRange.max,
         scale: true
       }
     ],
     dataZoom: [
       {
         type: 'inside',
-        start: 0,
-        end: 100
-      }
-    ],
-    series: [
-      {
-        name: '价格',
-        type: 'line',
-        yAxisIndex: 0,
-        data: processedData.prices,
-        smooth: true,
-        symbol: 'none',
-        lineStyle: {
-          color: '#1890ff',
-          width: 2
-        },
-        areaStyle: {
-          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-            { offset: 0, color: 'rgba(24, 144, 255, 0.3)' },
-            { offset: 1, color: 'rgba(24, 144, 255, 0.05)' }
-          ])
-        }
-      }
-    ]
-  }
-
-  chart.value.setOption(option, true)
-  emit('chartUpdate', { 
-    option, 
-    stockData: props.stockData, 
-    processedData 
-  })
-}
-
-// 更新多股票对比图
-const updateComparisonChart = () => {
-  if (!chart.value || !props.stockData?.length) return
-
-  const series = props.stockData.map((stock, index) => {
-    const processedData = processStockData(stock)
-    return {
-      name: stock.name,
-      type: 'line',
-      data: processedData.changePercent,
-      smooth: true,
-      symbol: 'none',
-      lineStyle: {
-        color: stock.color,
-        width: index === 0 ? 2 : 1
-      },
-      itemStyle: {
-        color: stock.color
-      }
-    }
-  })
-
-  const option = {
-    animation: false,
-    title: {
-      text: '多品种涨跌幅对比',
-      left: 'center'
-    },
-    tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross'
-      },
-      formatter: function(params) {
-        const time = params[0]?.axisValue
-        let result = `<div style="font-weight: bold; margin-bottom: 5px">${time}</div>`
-        
-        params.forEach(param => {
-          if (param.value !== null) {
-            const color = param.color
-            const value = param.value
-            result += `<div style="color: ${color}; margin: 2px 0">
-              ${param.seriesName}: ${value > 0 ? '+' : ''}${value}%
-            </div>`
-          }
-        })
-        
-        return result
-      }
-    },
-    legend: {
-      data: props.stockData.map(stock => stock.name),
-      top: 30
-    },
-    grid: {
-      left: '10%',
-      right: '8%',
-      top: '15%',
-      bottom: '15%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: timeAxis,
-      boundaryGap: false,
-      axisLabel: {
-        interval: 29,
-        formatter: function(value) {
-          return value.endsWith(':00:00') ? value.substring(0, 5) : ''
-        }
-      }
-    },
-    yAxis: {
-      type: 'value',
-      scale: true,
-      axisLabel: {
-        formatter: function(value) {
-          return value.toFixed(2) + '%'
-        }
-      },
-      splitLine: {
-        lineStyle: {
-          color: '#eee'
-        }
-      }
-    },
-    dataZoom: [
-      {
-        type: 'inside',
+        xAxisIndex: [0, 1],
         start: 0,
         end: 100
       }
@@ -405,15 +606,17 @@ const updateComparisonChart = () => {
   }
 
   chart.value.setOption(option, true)
-  emit('chartUpdate', { option, stockData: props.stockData })
+  emit('chartUpdate', { 
+    option, 
+    stockData: props.stockData, 
+    processedData: multiStockData 
+  })
 }
 
+
+
 const updateChart = () => {
-  if (props.stockData.length === 1) {
-    updateProfessionalChart()
-  } else {
-    updateComparisonChart()
-  }
+  updateProfessionalChart()
 }
 
 const resizeChart = () => {
@@ -447,7 +650,12 @@ onUnmounted(() => {
   window.removeEventListener('resize', resizeChart)
 })
 
-watch(() => props.stockData, () => {
+watch(() => props.stockData, (newVal, oldVal) => {
+  console.log('IntradayChart stockData 发生变化:', {
+    newLength: newVal?.length,
+    oldLength: oldVal?.length,
+    hasMinuteData: newVal?.some(stock => stock.minuteData && stock.minuteData.length > 0)
+  })
   updateChart()
 }, { deep: true })
 
