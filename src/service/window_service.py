@@ -275,19 +275,16 @@ class WindowService:
                 time.sleep(delay)
         return None
 
-    def click_element(self, window_params, control_id, retries=3, delay=0.5):
+    def click_element(self, window, control_id, retries=3, delay=0.5):
         """
         点击元素
-        :param window_params: 窗口查找参数
+        :param window: 目标窗口
         :param control_id: 元素的control_id
         :param retries: 重试次数，默认3次
         :param delay: 每次重试的延迟时间，默认0.5秒
         """
         for i in range(retries):
             try:
-                window = self.get_target_window(window_params)
-                if window is None:
-                    raise Exception("未找到目标窗口")
                 element = self.find_element_in_window(window, control_id)
                 if element is None:
                     raise Exception("未找到目标元素")
@@ -297,3 +294,32 @@ class WindowService:
                 if i == retries - 1:
                     raise Exception(f"点击元素失败: {str(e)}")
                 time.sleep(delay)
+
+    def input_text_to_element(self, window, control_id, text, delay=0.5):
+        """
+        向指定输入框元素输入文本内容
+        :param window: 目标窗口
+        :param control_id: 输入框元素的control_id
+        :param text: 要输入的文本内容
+        :param delay: 操作间隔时间，默认0.5秒
+        :return: 成功返回True，失败抛出异常
+        """
+        try:
+            # 查找输入框元素
+            input_element = self.find_element_in_window(window, control_id)
+            if input_element is None:
+                raise Exception(f"未找到control_id为{control_id}的输入框元素")
+            
+            # 聚焦输入框
+            input_element.set_focus()
+            time.sleep(delay)
+            
+            # 输入新内容
+            input_element.type_keys(text)
+            self.logger.add_log(f"成功向输入框(control_id:{control_id})输入文本: {text}")
+            return True
+            
+        except Exception as e:
+            error_msg = f"向输入框输入文本失败: {str(e)}"
+            self.logger.add_log(error_msg)
+            raise Exception(error_msg)
