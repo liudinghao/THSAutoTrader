@@ -389,62 +389,7 @@ const updateProfessionalChart = () => {
       }
     },
     tooltip: {
-      trigger: 'axis',
-      show: false,
-      axisPointer: {
-        type: 'cross',
-        lineStyle: {
-          color: '#999',
-          width: 1,
-          type: 'dashed'
-        }
-      },
-      backgroundColor: 'rgba(50, 50, 50, 0.9)',
-      borderColor: '#333',
-      borderWidth: 1,
-      textStyle: {
-        color: '#fff',
-        fontSize: 12
-      },
-      formatter: function(params) {
-        const time = params[0]?.axisValue
-        let result = `<div style="font-weight: bold; margin-bottom: 5px">${time}</div>`
-        
-        params.forEach(param => {
-          if (param.value !== null && param.value !== 0) {
-            let color = '#666'
-            let content = ''
-            
-            if (param.seriesName.includes('均价')) {
-              color = '#ff6600'
-              content = `${param.seriesName}: ¥${param.value.toFixed(3)}`
-            } else if (param.seriesName.includes('成交量')) {
-              if (param.value > 0) {
-                color = '#8c8c8c'
-                content = `${param.seriesName}: ${param.value.toLocaleString()}`
-              }
-            } else {
-              // 主股票价格线或其他股票涨跌幅线
-              if (param.seriesIndex === 0) {
-                // 主股票价格线
-                const price = preClose > 0 ? preClose * (1 + param.value / 100) : 0
-                color = param.value >= 0 ? '#f56c6c' : '#67c23a'
-                content = `${param.seriesName} 价格: ¥${price.toFixed(3)}`
-              } else {
-                // 其他股票涨跌幅线
-                color = param.value >= 0 ? '#f56c6c' : '#67c23a'
-                content = `${param.seriesName} 涨跌幅: ${param.value.toFixed(2)}%`
-              }
-            }
-            
-            if (content) {
-              result += `<div style="color: ${color}">${content}</div>`
-            }
-          }
-        })
-        
-        return result
-      }
+      show:false
     },
     legend: {
       data: [
