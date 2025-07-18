@@ -36,7 +36,9 @@ class AutomationController:
     def handle_click(self):
         """处理模拟点击请求"""
         try:
-            self.window_service.click_element({'class_name': '#32770', 'title':''}, 1006)
+            # 先获取window
+            window = self.window_service.get_target_window({'class_name': '#32770', 'title':''})
+            self.window_service.click_element(window, 1006)
             self.logger.add_log(f"成功点击control_id=1006的按钮")
         except Exception as e:
             self.logger.add_log(f"点击按钮失败: {str(e)}")

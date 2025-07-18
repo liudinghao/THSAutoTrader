@@ -93,6 +93,7 @@ http://localhost:5000/xiadan?code=600000&status=2
 
 - `code`: 股票代码，如 600000（浦发银行）
 - `status`: 交易类型，1 表示买入，2 表示卖出
+- `amount`: 交易数量，可选
 
 #### 撤单接口（全撤）
 
@@ -224,7 +225,6 @@ http://localhost:5000/balance
 4. 交易系统要单独一个窗口打开，不要精简模式
 
 ![交易系统窗口示例](https://github.com/user-attachments/assets/fe5ed4de-b895-459f-a927-55d49f1e17ec)
-
 
 ## 免责声明
 

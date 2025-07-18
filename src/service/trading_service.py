@@ -19,8 +19,8 @@ class TradingService:
             self.window_service.send_key('F3')
             self.logger.add_log("已打开委托撤单界面")
             time.sleep(0.1)
-            
-            self.window_service.click_element({'title': '网上股票交易系统5.0'}, 30001)
+            window = self.window_service.get_target_window({'title': '网上股票交易系统5.0'})
+            self.window_service.click_element(window, 30001)
             
             self.logger.add_log("批量撤单操作完成")
             return True
