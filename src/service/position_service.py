@@ -63,7 +63,7 @@ class PositionService:
 
 
         # 点击内容区域
-        self.window_service.click_element({'title': '网上股票交易系统5.0'}, 1047)
+        self.window_service.click_element(window_result, 1047)
         
         self.window_service.send_key('{CTRL+C}')
         # 查找验证码图片元素
@@ -86,24 +86,26 @@ class PositionService:
         if not ocr_text:
             return False
 
-        # 查找验证码输入框
-        input_result = self.window_service.find_element_in_window(window_result, 2404)
-        if input_result:
-            # 输入验证码
-            input_result.type_keys(ocr_text)
-            # 点击确定按钮
-            if self._click_button(window_result, 1):
-                # 检查验证码是否成功
-                if self._verify_captcha_input(window_result):
-                    # 获取剪切板数据
-                    data = self._get_clipboard_data()
-                    self.logger.add_log(f"剪切板数据2: {data}")
-                    return data
-                else:
-                    self.logger.add_log(f"验证码输入错误")
-                    # 点击取消按钮
-                    self._click_button(window_result, 2)
-                    raise Exception("验证码输入错误")
+        # 查找验证码输入框并输入验证码
+        try:
+            self.window_service.input_text_to_element(window_result, 2404, ocr_text)
+        except Exception as e:
+            self.logger.add_log(f"输入验证码失败: {str(e)}")
+            raise Exception(f"输入验证码失败: {str(e)}")
+        
+        # 点击确定按钮
+        if self._click_button(window_result, 1):
+            # 检查验证码是否成功
+            if self._verify_captcha_input(window_result):
+                # 获取剪切板数据
+                data = self._get_clipboard_data()
+                self.logger.add_log(f"剪切板数据2: {data}")
+                return data
+            else:
+                self.logger.add_log(f"验证码输入错误")
+                # 点击取消按钮
+                self._click_button(window_result, 2)
+                raise Exception("验证码输入错误")
         return False
 
     def _clean_digits(self, text: str) -> str:

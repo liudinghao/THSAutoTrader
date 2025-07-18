@@ -174,6 +174,7 @@ class FlaskApp:
             # 从url上获取参数，code
             code = request.args.get('code')
             status = request.args.get('status')
+            amount = request.args.get('amount')
             try:
                 if code is None:
                     return jsonify({"status": "error", "message": "code不能为空"})
@@ -190,9 +191,14 @@ class FlaskApp:
                     keyStr = keyStr + '23 ENTER'
 
                 self.window_service.send_key(keyStr)
-                time.sleep(0.1)
+                # 获取window
+                window = self.window_service.get_target_window({'class_name': '#32770', 'title':''})
+                # 如果有amount参数
+                if amount:
+                    self.window_service.input_text_to_element(window, 1034, amount)
+                
                 # 下单点击
-                self.window_service.click_element({'class_name': '#32770', 'title':''}, 1006)
+                self.window_service.click_element(window, 1006)
                 return jsonify({"status": "success", "message": f"已发送按键 {keyStr}"})
             except Exception as e:
                 self.logger.add_log(f"按键发送失败: {str(e)}")
