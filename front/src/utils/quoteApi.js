@@ -486,3 +486,29 @@ export function getLatestTradeDate(date = null) {
     });
   });
 }
+
+/**
+ * 检查是否在交易时间内
+ * @param {string} stockCode 股票代码，如：'300033'
+ * @returns {Promise<boolean>} 返回是否在交易时间内的Promise
+ */
+export function isTradeTime(stockCode) {
+  return new Promise((resolve, reject) => {
+    window.API.use({
+      method: 'Quote.isTradeTime',
+      data: stockCode,
+      success: function (isTradeTime) {
+        console.log('是否在交易时间内:', isTradeTime);
+        resolve(isTradeTime);
+      },
+      error: function (error) {
+        console.error('检查交易时间失败:', error);
+        reject(error);
+      },
+      notClient: () => {
+        console.error('API客户端不可用');
+        reject(new Error('API客户端不可用'));
+      },
+    });
+  });
+}

@@ -100,7 +100,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { fetchMinuteData, fetchHistoryData, getLatestTradeDate } from '../utils/quoteApi'
+import { fetchMinuteData, fetchHistoryData, getLatestTradeDate, isTradeTime } from '../utils/quoteApi'
 import IntradayChart from '../components/IntradayChart.vue'
 
 const intradayChartRef = ref(null)
@@ -232,16 +232,32 @@ const ensureStockColors = () => {
 }
 
 // 判断是否在交易时间内
-const checkTradingTime = () => {
-  const now = new Date()
-  const currentTime = now.getHours() * 100 + now.getMinutes()
+const checkTradingTime = async () => {
+  if (stockList.value.length === 0) {
+    return false
+  }
   
-  // 判断是否为工作日（周一到周五）
-  const isWeekday = now.getDay() >= 1 && now.getDay() <= 5
-  // 判断是否在交易时间内
-  const isMorningSession = currentTime >= 930 && currentTime <= 1130
-  const isAfternoonSession = currentTime >= 1300 && currentTime <= 1500
-  return isWeekday && (isMorningSession || isAfternoonSession)
+  try {
+    // 使用第一只股票的代码检查是否在交易时间内
+    const firstStock = stockList.value[0]
+    const stockCode = `${firstStock.marketId}:${firstStock.code}`
+    const result = await isTradeTime(stockCode)
+    
+    // API 返回 0 为非交易时间，非 0 为交易时间
+    return result !== 0
+  } catch (error) {
+    console.error('检查交易时间失败:', error)
+    // 如果 API 调用失败，回退到本地时间判断
+    const now = new Date()
+    const currentTime = now.getHours() * 100 + now.getMinutes()
+    
+    // 判断是否为工作日（周一到周五）
+    const isWeekday = now.getDay() >= 1 && now.getDay() <= 5
+    // 判断是否在交易时间内
+    const isMorningSession = currentTime >= 930 && currentTime <= 1130
+    const isAfternoonSession = currentTime >= 1300 && currentTime <= 1500
+    return isWeekday && (isMorningSession || isAfternoonSession)
+  }
 }
 
 // 定时刷新分时数据
@@ -251,7 +267,7 @@ const startAutoRefresh = () => {
   }
   
   refreshTimer.value = setInterval(async () => {
-    const tradingTime = checkTradingTime()
+    const tradingTime = await checkTradingTime()
     isTradingTime.value = tradingTime
     
     if (tradingTime && stockList.value.length > 0) {
