@@ -425,7 +425,7 @@ const updateProfessionalChart = () => {
         `${stock.name}(${stock.code})`,
         ...otherStocks.map(s => `${s.name}(${s.code})`)
       ],
-      top: 30,
+      top: 10,
       textStyle: {
         fontSize: 12
       }
@@ -445,12 +445,12 @@ const updateProfessionalChart = () => {
         left: '10%',
         right: '8%',
         height: '60%',
-        top: '15%'
+        top: '10%'
       },
       {
         left: '10%',
         right: '8%',
-        top: '80%',
+        top: '75%',
         height: '15%'
       }
     ],

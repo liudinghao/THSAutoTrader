@@ -3,6 +3,15 @@
     <div class="header">
       <h2>叠加分时图</h2>
       <div class="header-controls">
+        <el-date-picker
+          v-model="currentDate"
+          type="date"
+          placeholder="选择日期"
+          format="YYYY-MM-DD"
+          value-format="YYYYMMDD"
+          style="width: 150px; margin-right: 10px"
+          @change="onDateChange"
+        />
         <el-button 
           type="primary" 
           size="small" 
@@ -91,7 +100,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { fetchMinuteData, fetchRealTimeQuote } from '../utils/quoteApi'
+import { fetchMinuteData, fetchHistoryData } from '../utils/quoteApi'
 import IntradayChart from '../components/IntradayChart.vue'
 
 const intradayChartRef = ref(null)
@@ -104,6 +113,9 @@ const isLoading = ref(false)
 const preCloseCache = ref(new Map()) // 缓存昨收价
 const refreshTimer = ref(null) // 定时刷新定时器
 const isTradingTime = ref(false) // 是否在交易时间内
+
+// 统一管理日期，默认为当日
+const currentDate = ref(new Date().toISOString().slice(0, 10).replace(/-/g, ''))
 
 // localStorage 相关常量
 const STORAGE_KEY = 'multiStockChart_stockList'
@@ -270,7 +282,7 @@ const refreshMinuteDataOnly = async () => {
     console.log('开始定时刷新分时数据...')
     // 将股票对象数组转换为股票代码数组
     const stockCodes = stockList.value.map(stock => `${stock.marketId}:${stock.code}`)
-    const data = await fetchMinuteData(stockCodes, '20250718')
+    const data = await fetchMinuteData(stockCodes, currentDate.value)
     console.log('获取到的分时数据:', data)
     
     if (data) {
@@ -362,20 +374,30 @@ const refreshMinuteDataOnly = async () => {
   }
 }
 
+// 日期变化处理函数
+const onDateChange = async (newDate) => {
+  if (newDate && stockList.value.length > 0) {
+    console.log('日期已更改为:', newDate)
+    await fetchMinuteDataFromApi()
+  }
+}
+
 // 获取昨收价
 const fetchPreClose = async (stockList) => {
   if (stockList.length === 0) return
   
   try {
     const stockCodes = stockList.map(stock => `${stock.marketId}:${stock.code}`)
-    const realTimeData = await fetchRealTimeQuote(stockCodes)
+    const yesterdayStr = currentDate.value;
     
+    // 使用 fetchHistoryData 获取昨天的收盘价作为昨收价
+    const historyData = await fetchHistoryData(stockCodes, yesterdayStr, yesterdayStr)
     stockList.forEach(stock => {
       const stockKey = `${stock.marketId}:${stock.code}`
-      const stockData = realTimeData[stockKey]
+      const stockData = historyData[stockKey]
       
-      if (stockData && stockData.PRE) {
-        const preClose = parseFloat(stockData.PRE)
+      if (stockData && stockData[yesterdayStr] && stockData[yesterdayStr].PRE) {
+        const preClose = parseFloat(stockData[yesterdayStr].PRE)
         stock.preClose = preClose
         // 缓存昨收价，键为 marketId:code
         preCloseCache.value.set(stockKey, preClose)
@@ -398,7 +420,7 @@ const fetchMinuteDataFromApi = async () => {
     
     // 将股票对象数组转换为股票代码数组
     const stockCodes = stockList.value.map(stock => `${stock.marketId}:${stock.code}`)
-    const data = await fetchMinuteData(stockCodes, '20250718')
+    const data = await fetchMinuteData(stockCodes, currentDate.value)
     // 处理返回的数据
     if (data) {
       // 创建新的股票列表来触发响应式更新

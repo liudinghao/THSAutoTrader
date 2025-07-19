@@ -367,3 +367,93 @@ export async function fetchRealTimeQuote(stockCodes) {
     });
   });
 }
+
+/**
+ * 获取历史行情数据
+ * @param {string|string[]} stockCodes 股票代码，支持单个字符串或数组
+ * @param {string} beginDate 开始日期，格式：YYYYMMDD，如：20250711
+ * @param {string} endDate 结束日期，格式：YYYYMMDD，如：20250714
+ * @returns {Promise<Object>} 返回历史行情数据的Promise
+ *
+ * 返回数据格式示例：
+ * {
+ *   "33:300033": {
+ *     "20250711": {
+ *       "CLOSE": "287.2500",    // 收盘价
+ *       "OPEN": "275.0400",     // 开盘价
+ *       "PRE": "275.0100",      // 昨收价
+ *       "VOL": "25306788.000",  // 成交量
+ *       "money": "7246381000.00" // 成交额
+ *     },
+ *     "20250714": {
+ *       "CLOSE": "277.0800",
+ *       "OPEN": "284.9200",
+ *       "PRE": "287.2500",
+ *       "VOL": "12702121",
+ *       "money": "3532377800.00"
+ *     }
+ *   }
+ * }
+ */
+export async function fetchHistoryData(stockCodes, beginDate, endDate) {
+  return new Promise((resolve, reject) => {
+    // 确保 stockCodes 是数组格式
+    const codes = Array.isArray(stockCodes) ? stockCodes : [stockCodes];
+
+    // 第一步：请求历史数据
+    window.API.use({
+      method: 'Quote.request',
+      data: {
+        code: codes,
+        type: ['OPEN', 'CLOSE', 'PRE', 'VOL', 'money'],
+        period: 'day',
+        begin: beginDate,
+        end: endDate,
+      },
+      success: function (data) {
+        // 第二步：获取详细数据
+        window.API.use({
+          method: 'Quote.getData2',
+          data: {
+            code: codes,
+            type: ['OPEN', 'CLOSE', 'PRE', 'VOL', 'money'],
+            period: 'day',
+            mode: 'after',
+            time: {
+              begin: beginDate,
+              end: endDate,
+              timeFmt: 1,
+            },
+            updateMode: 1, // 这个参数如果不加的话在获取新股的k涨跌幅的时候会为空
+          },
+          success: function (data) {
+            try {
+              const parsedData = JSON.parse(data);
+              console.log('fetchHistoryData: 获取历史数据完成', parsedData);
+              resolve(parsedData);
+            } catch (error) {
+              console.error('解析历史数据失败:', error);
+              reject(error);
+            }
+          },
+          error: function (error) {
+            console.error('获取历史详细数据失败:', error);
+            reject(error);
+          },
+          notClient: () => {
+            console.error('API客户端不可用');
+            reject(new Error('API客户端不可用'));
+          },
+        });
+      },
+      error: function (error) {
+        console.error('请求历史数据失败:', error);
+        reject(error);
+      },
+      notClient: () => {
+        console.error('API客户端不可用');
+        reject(new Error('API客户端不可用'));
+      },
+    });
+  });
+}
