@@ -457,3 +457,32 @@ export async function fetchHistoryData(stockCodes, beginDate, endDate) {
     });
   });
 }
+
+/**
+ * 获取最近一个交易日
+ * @param {string} date 查询日期，格式：YYYYMMDD，如：20250719，默认为当前日期
+ * @returns {Promise<string>} 返回最近一个交易日的Promise
+ */
+export function getLatestTradeDate(date = null) {
+  return new Promise((resolve, reject) => {
+    // 如果没有指定日期，使用当前日期
+    const targetDate =
+      date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+    window.API.use({
+      method: 'Quote.getSHTradeDate',
+      data: targetDate,
+      success: function (result) {
+        resolve(result);
+      },
+      error: function (error) {
+        console.error('获取最近交易日失败:', error);
+        reject(error);
+      },
+      notClient: () => {
+        console.error('API客户端不可用');
+        reject(new Error('API客户端不可用'));
+      },
+    });
+  });
+}

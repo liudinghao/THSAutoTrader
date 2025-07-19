@@ -100,7 +100,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { fetchMinuteData, fetchHistoryData } from '../utils/quoteApi'
+import { fetchMinuteData, fetchHistoryData, getLatestTradeDate } from '../utils/quoteApi'
 import IntradayChart from '../components/IntradayChart.vue'
 
 const intradayChartRef = ref(null)
@@ -114,8 +114,8 @@ const preCloseCache = ref(new Map()) // 缓存昨收价
 const refreshTimer = ref(null) // 定时刷新定时器
 const isTradingTime = ref(false) // 是否在交易时间内
 
-// 统一管理日期，默认为当日
-const currentDate = ref(new Date().toISOString().slice(0, 10).replace(/-/g, ''))
+// 统一管理日期，初始为空
+const currentDate = ref('')
 
 // localStorage 相关常量
 const STORAGE_KEY = 'multiStockChart_stockList'
@@ -177,8 +177,10 @@ const addStock = async () => {
   newStockName.value = ''
   saveToLocalStorage()
   
-  // 获取新添加股票的分时数据
-  await fetchMinuteDataFromApi()
+  // 只有在有日期时才获取新添加股票的分时数据
+  if (currentDate.value) {
+    await fetchMinuteDataFromApi()
+  }
   // 数据更新后，IntradayChart 的 watch 会自动触发更新
 }
 
@@ -276,7 +278,7 @@ const stopAutoRefresh = () => {
 
 // 只刷新分时数据，不重新获取昨收价
 const refreshMinuteDataOnly = async () => {
-  if (stockList.value.length === 0) return
+  if (stockList.value.length === 0 || !currentDate.value) return
   
   try {
     console.log('开始定时刷新分时数据...')
@@ -410,7 +412,7 @@ const fetchPreClose = async (stockList) => {
 
 // 获取真实分时数据
 const fetchMinuteDataFromApi = async () => {
-  if (stockList.value.length === 0) return
+  if (stockList.value.length === 0 || !currentDate.value) return
   
   try {
     isLoading.value = true
@@ -511,6 +513,11 @@ const refreshData = async () => {
     return
   }
   
+  if (!currentDate.value) {
+    ElMessage.warning('请先选择日期')
+    return
+  }
+  
   // 创建新的股票列表，清空分时数据
   const updatedStockList = stockList.value.map(stock => ({
     ...stock,
@@ -539,11 +546,22 @@ function getChangeClass(change) {
 }
 
 onMounted(async () => {
+  try {
+    // 获取最近交易日并设置为当前日期
+    const latestTradeDate = await getLatestTradeDate()
+    currentDate.value = latestTradeDate
+    console.log('初始化日期为最近交易日:', latestTradeDate)
+  } catch (error) {
+    console.error('获取最近交易日失败，使用当前日期:', error)
+    // 如果获取失败，使用当前日期作为备选
+    currentDate.value = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  }
+  
   // 首先加载保存的数据
   loadFromLocalStorage()
   
-  // 如果有保存的股票数据，获取分时数据
-  if (stockList.value.length > 0) {
+  // 只有在有日期且有保存的股票数据时，才获取分时数据
+  if (currentDate.value && stockList.value.length > 0) {
     await fetchMinuteDataFromApi()
   }
   
@@ -560,7 +578,11 @@ watch(stockList, (newVal, oldVal) => {
     oldLength: oldVal?.length,
     hasMinuteData: newVal.some(stock => stock.minuteData && stock.minuteData.length > 0)
   })
-  // IntradayChart 会自动响应数据变化，无需手动更新
+  
+  // 只有在有日期且有股票数据时，才进行相关操作
+  if (currentDate.value && newVal.length > 0) {
+    // IntradayChart 会自动响应数据变化，无需手动更新
+  }
 }, { deep: true })
 </script>
 
