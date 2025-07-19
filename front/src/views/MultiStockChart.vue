@@ -21,10 +21,12 @@
         placeholder="选择市场"
         style="width: 120px; margin-right: 10px"
       >
-        <el-option label="沪市A股" value="17" />
-        <el-option label="深市A股" value="33" />
-        <el-option label="港股" value="177" />
-        <el-option label="港股基金" value="20" />
+        <el-option 
+          v-for="(name, id) in marketMap" 
+          :key="id"
+          :label="name" 
+          :value="id" 
+        />
       </el-select>
       <el-input
         v-model="newStockCode"
@@ -89,7 +91,7 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
-import { stockService } from '../services/stockService'
+import { fetchMinuteData, fetchRealTimeQuote } from '../utils/quoteApi'
 import IntradayChart from '../components/IntradayChart.vue'
 
 const intradayChartRef = ref(null)
@@ -110,6 +112,7 @@ const STORAGE_KEY = 'multiStockChart_stockList'
 const marketMap = {
   '17': '沪市A股',
   '33': '深市A股', 
+  '48': '概念',
   '177': '港股',
   '20': '港股基金'
 }
@@ -163,7 +166,7 @@ const addStock = async () => {
   saveToLocalStorage()
   
   // 获取新添加股票的分时数据
-  await fetchMinuteData()
+  await fetchMinuteDataFromApi()
   // 数据更新后，IntradayChart 的 watch 会自动触发更新
 }
 
@@ -265,7 +268,9 @@ const refreshMinuteDataOnly = async () => {
   
   try {
     console.log('开始定时刷新分时数据...')
-    const data = await stockService.fetchMultipleStocksMinuteData(stockList.value)
+    // 将股票对象数组转换为股票代码数组
+    const stockCodes = stockList.value.map(stock => `${stock.marketId}:${stock.code}`)
+    const data = await fetchMinuteData(stockCodes, '20250718')
     console.log('获取到的分时数据:', data)
     
     if (data) {
@@ -279,8 +284,12 @@ const refreshMinuteDataOnly = async () => {
         
         if (stockData) {
           console.log(`更新股票 ${stock.code} 的分时数据:`, stockData)
+          
+          // 先按时间戳排序，确保数据按时间顺序处理
+          const sortedEntries = Object.entries(stockData).sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+          
           // 转换数据格式为 ECharts 需要的格式，使用涨跌幅作为Y轴数据
-          const chartData = Object.entries(stockData).map(([timestamp, values]) => {
+          const chartData = sortedEntries.map(([timestamp, values]) => {
             // 将时间戳转换为时分字符串，格式为 HH:mm:00（与时间轴格式保持一致）
             const date = new Date(parseInt(timestamp) * 1000)
             const hours = date.getHours().toString().padStart(2, '0')
@@ -300,19 +309,28 @@ const refreshMinuteDataOnly = async () => {
               timeStr, // 使用时分字符串，格式为 HH:mm:00
               parseFloat(changePercent.toFixed(2)) // 涨跌幅作为Y轴数据
             ]
-          }).sort((a, b) => new Date(`2025/01/01 ${a[0]}`) - new Date(`2025/01/01 ${b[0]}`)) // 按时间排序
+          })
           
           // 保存原始数据用于计算均价线等
           const rawData = {}
-          Object.entries(stockData).forEach(([timestamp, values]) => {
+          sortedEntries.forEach(([timestamp, values], volIndex) => {
             const date = new Date(parseInt(timestamp) * 1000)
             const hours = date.getHours().toString().padStart(2, '0')
             const minutes = date.getMinutes().toString().padStart(2, '0')
             const timeStr = `${hours}:${minutes}:00`
+            
+            // 计算成交量：第一个数据保持不变，后续数据等于当前数据减去上一个数据
+            let calculatedVol = parseFloat(values.VOL || 0)
+            if (volIndex > 0) {
+              const prevValues = sortedEntries[volIndex - 1][1]
+              const prevVol = parseFloat(prevValues.VOL || 0)
+              calculatedVol = Math.max(0, calculatedVol - prevVol) // 确保不为负数
+            }
+            
             rawData[timeStr] = {
               NEW: values.NEW,
               JUNJIA: values.JUNJIA,
-              VOL: values.VOL,
+              VOL: calculatedVol, // 使用计算后的成交量
               money: values.money
             }
           })
@@ -358,7 +376,7 @@ const fetchPreClose = async (stockList) => {
   
   try {
     const stockCodes = stockList.map(stock => `${stock.marketId}:${stock.code}`)
-    const realTimeData = await stockService.fetchRealTimeQuote(stockCodes)
+    const realTimeData = await fetchRealTimeQuote(stockCodes)
     
     stockList.forEach(stock => {
       const stockKey = `${stock.marketId}:${stock.code}`
@@ -377,7 +395,7 @@ const fetchPreClose = async (stockList) => {
 }
 
 // 获取真实分时数据
-const fetchMinuteData = async () => {
+const fetchMinuteDataFromApi = async () => {
   if (stockList.value.length === 0) return
   
   try {
@@ -386,7 +404,9 @@ const fetchMinuteData = async () => {
     // 首先获取昨收价
     await fetchPreClose(stockList.value)
     
-    const data = await stockService.fetchMultipleStocksMinuteData(stockList.value)
+    // 将股票对象数组转换为股票代码数组
+    const stockCodes = stockList.value.map(stock => `${stock.marketId}:${stock.code}`)
+    const data = await fetchMinuteData(stockCodes, '20250718')
     // 处理返回的数据
     if (data) {
       // 创建新的股票列表来触发响应式更新
@@ -401,7 +421,10 @@ const fetchMinuteData = async () => {
           const chartData = []
           const rawData = {}
           
-          Object.entries(stockData).forEach(([timestamp, values]) => {
+          // 先按时间戳排序，确保数据按时间顺序处理
+          const sortedEntries = Object.entries(stockData).sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
+          
+          sortedEntries.forEach(([timestamp, values], index) => {
             // 将时间戳转换为时分字符串，格式为 HH:mm:00（与时间轴格式保持一致）
             const date = new Date(parseInt(timestamp) * 1000)
             const hours = date.getHours().toString().padStart(2, '0')
@@ -417,16 +440,24 @@ const fetchMinuteData = async () => {
               changePercent = ((currentPrice - preClose) / preClose) * 100
             }
             
+            // 计算成交量：第一个数据保持不变，后续数据等于当前数据减去上一个数据
+            let calculatedVol = parseFloat(values.VOL || 0)
+            if (index > 0) {
+              const prevValues = sortedEntries[index - 1][1]
+              const prevVol = parseFloat(prevValues.VOL || 0)
+              calculatedVol = Math.max(0, calculatedVol - prevVol) // 确保不为负数
+            }
+            
             chartData.push([
               timeStr, // 使用时分字符串，格式为 HH:mm:00
               parseFloat(changePercent.toFixed(2)) // 涨跌幅作为Y轴数据
             ])
             
-            // 保存原始数据用于计算均价线等
+            // 保存原始数据用于计算均价线等，包含计算后的成交量
             rawData[timeStr] = {
               NEW: values.NEW,
               JUNJIA: values.JUNJIA,
-              VOL: values.VOL,
+              VOL: calculatedVol, // 使用计算后的成交量
               money: values.money
             }
           })
@@ -484,7 +515,7 @@ const refreshData = async () => {
   // 更新股票列表
   stockList.value.splice(0, stockList.value.length, ...updatedStockList)
   
-  await fetchMinuteData()
+  await fetchMinuteDataFromApi()
   // 数据更新后，IntradayChart 的 watch 会自动触发更新
   ElMessage.success('数据刷新成功')
 }
@@ -507,7 +538,7 @@ onMounted(async () => {
   
   // 如果有保存的股票数据，获取分时数据
   if (stockList.value.length > 0) {
-    await fetchMinuteData()
+    await fetchMinuteDataFromApi()
   }
   
   startAutoRefresh() // 启动定时刷新

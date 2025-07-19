@@ -31,7 +31,7 @@ const emit = defineEmits(['chartUpdate', 'chartClick', 'dataPointClick'])
 const chartRef = ref(null)
 const chart = ref(null)
 
-// 生成A股分时完整时间刻度（匹配原有数据格式 HH:mm:00）
+// 生成A股分时时间刻度，跳过午间休市时段（11:30-13:00）
 const generateAStockTimeAxis = () => {
   const pad = n => n.toString().padStart(2, '0')
   const times = []
@@ -44,8 +44,8 @@ const generateAStockTimeAxis = () => {
     if (h === 11 && m > 30) break
   }
   
-  // 下午 13:00~15:00
-  for (let h = 13, m = 0; h < 16;) {
+  // 下午 13:01~15:00
+  for (let h = 13, m = 1; h < 16;) {
     times.push(`${pad(h)}:${pad(m)}:00`)
     m++
     if (m === 60) { h++; m = 0 }
@@ -193,21 +193,37 @@ const processMultiStockData = () => {
   }
 }
 
-// 计算价格范围
+// 计算价格范围，确保与涨跌幅轴对齐
 const calculatePriceRange = (prices, preClose) => {
   const validPrices = prices.filter(p => p !== null)
-  if (validPrices.length === 0) return { min: preClose - 1, max: preClose + 1 }
+  if (validPrices.length === 0) {
+    // 默认范围：昨收价上下5%
+    return { 
+      min: preClose * 0.95, 
+      max: preClose * 1.05,
+      center: preClose
+    }
+  }
   
   const minPrice = Math.min(...validPrices)
   const maxPrice = Math.max(...validPrices)
   
-  // 添加边距
-  const range = maxPrice - minPrice
-  const padding = range * 0.1 || 0.1
+  // 计算相对于昨收价的涨跌幅
+  const minChange = preClose > 0 ? ((minPrice - preClose) / preClose) * 100 : -5
+  const maxChange = preClose > 0 ? ((maxPrice - preClose) / preClose) * 100 : 5
+  
+  // 取最大绝对值，确保对称
+  const maxAbsChange = Math.max(Math.abs(minChange), Math.abs(maxChange), 1) // 至少1%
+  const padding = maxAbsChange * 0.1
+  const finalMaxChange = maxAbsChange + padding
+  
+  // 根据涨跌幅反推价格范围
+  const minPriceAligned = preClose * (1 - finalMaxChange / 100)
+  const maxPriceAligned = preClose * (1 + finalMaxChange / 100)
   
   return {
-    min: Math.max(0, minPrice - padding),
-    max: maxPrice + padding,
+    min: Math.max(0, minPriceAligned),
+    max: maxPriceAligned,
     center: preClose
   }
 }
@@ -224,7 +240,7 @@ const calculateVolumeRange = (volumes) => {
   }
 }
 
-// 计算多股票涨跌幅范围
+// 计算多股票涨跌幅范围 - 与价格轴同步
 const calculateMultiStockChangeRange = (mainStock, otherStocks) => {
   let allChanges = []
   
@@ -244,11 +260,15 @@ const calculateMultiStockChangeRange = (mainStock, otherStocks) => {
   
   const maxChange = Math.max(...allChanges)
   const minChange = Math.min(...allChanges)
-  const changePadding = Math.max(Math.abs(maxChange), Math.abs(minChange)) * 0.1
+  
+  // 取最大绝对值，确保对称，保证0轴居中
+  const maxAbsChange = Math.max(Math.abs(maxChange), Math.abs(minChange), 1) // 至少1%
+  const changePadding = maxAbsChange * 0.1
+  const finalMaxChange = maxAbsChange + changePadding
   
   return {
-    min: Math.min(-changePadding, minChange - changePadding),
-    max: Math.max(changePadding, maxChange + changePadding)
+    min: -finalMaxChange,
+    max: finalMaxChange
   }
 }
 
@@ -440,7 +460,9 @@ const updateProfessionalChart = () => {
         },
         axisLabel: {
           interval: function(index, value) {
-            return index % 30 === 0
+            // 在关键时间点显示标签
+            const time = value.substring(0, 5)
+            return ['09:30', '10:00', '10:30', '11:00', '11:30', '13:30', '14:00', '14:30', '15:00'].includes(time)
           },
           formatter: function(value) {
             return value.substring(0, 5)
@@ -452,6 +474,12 @@ const updateProfessionalChart = () => {
         },
         axisPointer: {
           z: 100
+        },
+        splitArea: {
+          show: true,
+          areaStyle: {
+            color: ['rgba(250,250,250,0.3)', 'rgba(245,245,245,0.3)']
+          }
         }
       },
       {
@@ -492,8 +520,8 @@ const updateProfessionalChart = () => {
           },
           color: '#333'
         },
-        min: Math.max(0, priceRange.min),
-        max: Math.max(priceRange.max, priceRange.min + 0.01),
+        min: priceRange.min,
+        max: priceRange.max,
         scale: true
       },
       {
@@ -513,8 +541,8 @@ const updateProfessionalChart = () => {
             return value > 0 ? '#f56c6c' : (value < 0 ? '#67c23a' : '#666')
           }
         },
-        min: Math.max(-20, changeRange.min),
-        max: Math.min(20, changeRange.max),
+        min: changeRange.min,
+        max: changeRange.max,
         scale: true
       },
       {
