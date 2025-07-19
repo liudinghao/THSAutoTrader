@@ -313,24 +313,16 @@ const refreshMinuteDataOnly = async () => {
           
           // 保存原始数据用于计算均价线等
           const rawData = {}
-          sortedEntries.forEach(([timestamp, values], volIndex) => {
+          sortedEntries.forEach(([timestamp, values]) => {
             const date = new Date(parseInt(timestamp) * 1000)
             const hours = date.getHours().toString().padStart(2, '0')
             const minutes = date.getMinutes().toString().padStart(2, '0')
             const timeStr = `${hours}:${minutes}:00`
             
-            // 计算成交量：第一个数据保持不变，后续数据等于当前数据减去上一个数据
-            let calculatedVol = parseFloat(values.VOL || 0)
-            if (volIndex > 0) {
-              const prevValues = sortedEntries[volIndex - 1][1]
-              const prevVol = parseFloat(prevValues.VOL || 0)
-              calculatedVol = Math.max(0, calculatedVol - prevVol) // 确保不为负数
-            }
-            
             rawData[timeStr] = {
               NEW: values.NEW,
               JUNJIA: values.JUNJIA,
-              VOL: calculatedVol, // 使用计算后的成交量
+              VOL: parseFloat(values.VOL || 0), // API 已经计算好的成交量
               money: values.money
             }
           })
@@ -440,24 +432,16 @@ const fetchMinuteDataFromApi = async () => {
               changePercent = ((currentPrice - preClose) / preClose) * 100
             }
             
-            // 计算成交量：第一个数据保持不变，后续数据等于当前数据减去上一个数据
-            let calculatedVol = parseFloat(values.VOL || 0)
-            if (index > 0) {
-              const prevValues = sortedEntries[index - 1][1]
-              const prevVol = parseFloat(prevValues.VOL || 0)
-              calculatedVol = Math.max(0, calculatedVol - prevVol) // 确保不为负数
-            }
-            
             chartData.push([
               timeStr, // 使用时分字符串，格式为 HH:mm:00
               parseFloat(changePercent.toFixed(2)) // 涨跌幅作为Y轴数据
             ])
             
-            // 保存原始数据用于计算均价线等，包含计算后的成交量
+            // 保存原始数据用于计算均价线等，API 已经计算好的成交量
             rawData[timeStr] = {
               NEW: values.NEW,
               JUNJIA: values.JUNJIA,
-              VOL: calculatedVol, // 使用计算后的成交量
+              VOL: parseFloat(values.VOL || 0), // API 已经计算好的成交量
               money: values.money
             }
           })

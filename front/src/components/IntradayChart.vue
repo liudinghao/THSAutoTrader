@@ -373,8 +373,17 @@ const updateProfessionalChart = () => {
     data: mainStock.volumes.map(v => v !== null ? v : 0),
     itemStyle: {
       color: function(params) {
-        const priceChange = mainStock.changePercent[params.dataIndex] || 0
-        return priceChange >= 0 ? '#f56c6c' : '#67c23a'
+        const priceChange = mainStock.changePercent[params.dataIndex]
+        // 根据当前价格和上一分钟的价格来判断颜色，如果是第一个数据，则与昨收价比较
+        const currentPrice = mainStock.prices[params.dataIndex]
+        const previousPrice = params.dataIndex === 0 ? preClose : mainStock.prices[params.dataIndex - 1]
+        if (currentPrice > previousPrice) {
+          return '#f56c6c'
+        } else if (currentPrice < previousPrice) {
+          return '#67c23a'
+        } else {
+          return '#c5c5c5'
+        }
       }
     },
     barWidth: '60%',
@@ -547,7 +556,7 @@ const updateProfessionalChart = () => {
       },
       {
         type: 'value',
-        name: '成交量',
+        name: '',
         gridIndex: 1,
         splitNumber: 2,
         axisLabel: {

@@ -179,6 +179,7 @@ export function getStocksByConceptCode(conceptCode) {
  * }
  * }
  * 1752629400 是时间戳，单位是秒
+ * 注意：VOL 和 money 字段已经过处理，第一个数据点的成交量和成交额保持不变，后续数据点的成交量和成交额已计算为增量值
  */
 export async function fetchMinuteData(stockCodes, date = null) {
   return new Promise((resolve, reject) => {
@@ -219,7 +220,44 @@ export async function fetchMinuteData(stockCodes, date = null) {
             try {
               const parsedData = JSON.parse(data);
               console.log('fetchMinuteData: 获取分时数据完成', parsedData);
-              resolve(parsedData);
+
+              // 处理成交量计算
+              const processedData = {};
+              for (const [stockCode, timeData] of Object.entries(parsedData)) {
+                // 按时间戳排序
+                const sortedEntries = Object.entries(timeData).sort(
+                  (a, b) => parseInt(a[0]) - parseInt(b[0])
+                );
+
+                const processedTimeData = {};
+                sortedEntries.forEach(([timestamp, values], index) => {
+                  // 计算成交量：第一个数据保持不变，后续数据等于当前数据减去上一个数据
+                  let calculatedVol = parseFloat(values.VOL || 0);
+                  if (index > 0) {
+                    const prevValues = sortedEntries[index - 1][1];
+                    const prevVol = parseFloat(prevValues.VOL || 0);
+                    calculatedVol = Math.max(0, calculatedVol - prevVol); // 确保不为负数
+                  }
+
+                  // 计算成交额：第一个数据保持不变，后续数据等于当前数据减去上一个数据
+                  let calculatedMoney = parseFloat(values.money || 0);
+                  if (index > 0) {
+                    const prevValues = sortedEntries[index - 1][1];
+                    const prevMoney = parseFloat(prevValues.money || 0);
+                    calculatedMoney = Math.max(0, calculatedMoney - prevMoney); // 确保不为负数
+                  }
+
+                  processedTimeData[timestamp] = {
+                    ...values,
+                    VOL: calculatedVol.toString(), // 使用计算后的成交量
+                    money: calculatedMoney.toString(), // 使用计算后的成交额
+                  };
+                });
+
+                processedData[stockCode] = processedTimeData;
+              }
+
+              resolve(processedData);
             } catch (error) {
               console.error('解析分时数据失败:', error);
               reject(error);
