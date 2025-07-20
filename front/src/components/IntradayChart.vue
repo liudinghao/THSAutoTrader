@@ -194,7 +194,7 @@ const processMultiStockData = () => {
 }
 
 // 计算价格范围，确保与涨跌幅轴对齐
-const calculatePriceRange = (prices, preClose) => {
+const calculatePriceRange = (prices, preClose, changeRange) => {
   const validPrices = prices.filter(p => p !== null)
   if (validPrices.length === 0) {
     // 默认范围：昨收价上下5%
@@ -204,39 +204,10 @@ const calculatePriceRange = (prices, preClose) => {
       center: preClose
     }
   }
-  
-  const minPrice = Math.min(...validPrices)
-  const maxPrice = Math.max(...validPrices)
-  
-  // 计算相对于昨收价的涨跌幅
-  const minChange = preClose > 0 ? ((minPrice - preClose) / preClose) * 100 : -5
-  const maxChange = preClose > 0 ? ((maxPrice - preClose) / preClose) * 100 : 5
-  
-  // 取最大绝对值，确保对称
-  const maxAbsChange = Math.max(Math.abs(minChange), Math.abs(maxChange), 1) // 至少1%
-  const padding = maxAbsChange * 0.1
-  const finalMaxChange = maxAbsChange + padding
-  
-  // 根据涨跌幅反推价格范围
-  const minPriceAligned = preClose * (1 - finalMaxChange / 100)
-  const maxPriceAligned = preClose * (1 + finalMaxChange / 100)
-  
   return {
-    min: Math.max(0, minPriceAligned),
-    max: maxPriceAligned,
+    min: preClose * (1 + changeRange.min / 100),
+    max: preClose * (1 + changeRange.max / 100),
     center: preClose
-  }
-}
-
-// 计算成交量范围
-const calculateVolumeRange = (volumes) => {
-  const validVolumes = volumes.filter(v => v > 0)
-  if (validVolumes.length === 0) return { min: 0, max: 1000 }
-  
-  const maxVolume = Math.max(...validVolumes)
-  return {
-    min: 0,
-    max: maxVolume * 1.2 // 20% 的上边距
   }
 }
 
@@ -275,7 +246,7 @@ const calculateMultiStockChangeRange = (mainStock, otherStocks) => {
 // 生成股票颜色
 const generateStockColors = (count) => {
   const colors = [
-    '#1890ff', '#f56c6c', '#67c23a', '#e6a23c', '#909399',
+    '#1890ff', '#f56c6c', '#67c23a', '#e6a23c', '#98D8C8',
     '#ff7875', '#95de64', '#ffc53d', '#b37feb', '#ff85c0'
   ]
   
@@ -296,13 +267,13 @@ const updateProfessionalChart = () => {
   if (!mainStock) return
 
   const stock = props.stockData[0]
-  const preClose = parseFloat(stock.preClose) || 0
-  
-  // 计算价格范围
-  const priceRange = calculatePriceRange(mainStock.prices, preClose)
+  const preClose = parseFloat(stock.preClose);
   
   // 计算多股票涨跌幅范围
   const changeRange = calculateMultiStockChangeRange(mainStock, otherStocks)
+
+  // 计算价格范围(应该根据涨跌幅来计算)
+  const priceRange = calculatePriceRange(mainStock.prices, preClose, changeRange)
 
   // 计算成交量范围
   const validVolumes = mainStock.volumes.filter(v => v !== null && v > 0)
