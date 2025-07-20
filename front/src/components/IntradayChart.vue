@@ -258,6 +258,40 @@ const generateStockColors = (count) => {
   return result
 }
 
+// 生成卖出标记点配置
+const generateSellMarkPoint = (prices, timeIndex = 10) => {
+  if (!prices || prices.length === 0 || !prices[timeIndex]) {
+    return null
+  }
+  
+  return {
+    symbol: 'arrow',
+    symbolSize: 16,
+    symbolRotate: 180,
+    itemStyle: {
+      color: '#f56c6c'
+    },
+    label: {
+      show: true,
+      formatter: '卖',
+      color: '#fff',
+      fontSize: 10,
+      fontWeight: 'bold',
+      backgroundColor: 'rgba(245, 108, 108, 0.8)',
+      padding: [2, 6],
+      borderRadius: 4,
+      position: 'top'
+    },
+    data: [
+      {
+        type: 'max',
+        valueIndex: 0,
+        coord: [timeIndex, prices[timeIndex]]
+      }
+    ]
+  }
+}
+
 // 更新专业分时图 - 支持多股票叠加
 const updateProfessionalChart = () => {
   if (!chart.value || !props.stockData?.length) return
@@ -318,7 +352,8 @@ const updateProfessionalChart = () => {
       color: stockColors[0],
       width: 2
     },
-    markLine: markLine
+    markLine: markLine,
+    markPoint: generateSellMarkPoint(mainStock.prices, 10)
   })
   
   // 主股票的均价线（不显示在图例中）

@@ -106,6 +106,7 @@ import { ElMessage } from 'element-plus'
 import { Refresh } from '@element-plus/icons-vue'
 import { fetchMinuteData, getLatestTradeDate, isTradeTime } from '../utils/quoteApi'
 import IntradayChart from '../components/IntradayChart.vue'
+import { analyzeSellPoints } from '../strategies/sellPointAnalysis'
 
 // ==================== 响应式数据 ====================
 const intradayChartRef = ref(null)
@@ -377,8 +378,9 @@ const fetchMinuteDataFromApi = async () => {
     
     const stockCodes = stockList.value.map(stock => `${stock.marketId}:${stock.code}`)
     const data = await fetchMinuteData(stockCodes, currentDate.value)
-    
+    console.log('data:',data)
     if (data) {
+      
       const { updatedStockList } = processMinuteData(data, stockList.value)
       
       // 触发响应式更新
