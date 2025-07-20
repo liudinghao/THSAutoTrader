@@ -2,7 +2,7 @@
  * 历史数据模拟播放代理
  * 用于将历史数据按照时间顺序逐步播放，模拟实时数据流
  */
-import { fetchMinuteData } from './quoteApi';
+import { fetchMinuteData, timestampToTimeString } from './quoteApi';
 
 class SimulationDataProxy {
   constructor() {
@@ -64,17 +64,8 @@ class SimulationDataProxy {
         const chartData = [];
         const rawData = {};
 
-        // 先按时间戳排序
-        const sortedEntries = Object.entries(stockData).sort(
-          (a, b) => parseInt(a[0]) - parseInt(b[0])
-        );
-
-        sortedEntries.forEach(([timestamp, values]) => {
-          // 将时间戳转换为时分字符串
-          const date = new Date(parseInt(timestamp) * 1000);
-          const hours = date.getHours().toString().padStart(2, '0');
-          const minutes = date.getMinutes().toString().padStart(2, '0');
-          const timeStr = `${hours}:${minutes}:00`;
+        Object.entries(stockData).forEach(([timeStr, values]) => {
+          // 时间字符串已经是 HH:mm:00 格式，无需转换
 
           // 计算涨跌幅，使用传入的昨收价
           const currentPrice = parseFloat(values.NEW || values.JUNJIA || 0);
@@ -116,16 +107,10 @@ class SimulationDataProxy {
         const convertedData = {};
 
         currentSimulationData.data.forEach(([timeStr, changePercent]) => {
-          // 将时间字符串转换回时间戳
-          const [hours, minutes] = timeStr.split(':');
-          const date = new Date();
-          date.setHours(parseInt(hours), parseInt(minutes), 0, 0);
-          const timestamp = Math.floor(date.getTime() / 1000);
-
           // 从原始数据中获取对应的价格信息
           const originalTimeData = currentSimulationData.rawData[timeStr];
           if (originalTimeData) {
-            convertedData[timestamp] = originalTimeData;
+            convertedData[timeStr] = originalTimeData;
           }
         });
 

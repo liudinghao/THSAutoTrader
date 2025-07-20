@@ -3,6 +3,53 @@
  */
 
 /**
+ * 时间戳转换工具函数
+ * @param {number|string} timestamp 时间戳（秒）
+ * @param {string} format 输出格式，默认为 'HH:mm:00'
+ * @returns {string} 格式化后的时间字符串
+ */
+export function formatTimestamp(timestamp, format = 'HH:mm:00') {
+  const date = new Date(parseInt(timestamp) * 1000);
+  const hours = date.getHours().toString().padStart(2, '0');
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  const seconds = date.getSeconds().toString().padStart(2, '0');
+
+  return format
+    .replace('HH', hours)
+    .replace('mm', minutes)
+    .replace('ss', seconds);
+}
+
+/**
+ * 将时间戳转换为 HH:mm:00 格式（与时间轴格式保持一致）
+ * @param {number|string} timestamp 时间戳（秒）
+ * @returns {string} 格式化的时间字符串，如 "14:30:00"
+ */
+export function timestampToTimeString(timestamp) {
+  return formatTimestamp(timestamp, 'HH:mm:00');
+}
+
+/**
+ * 将时间戳转换为完整的日期时间格式
+ * @param {number|string} timestamp 时间戳（秒）
+ * @returns {string} 格式化的时间字符串，如 "2024-01-01 14:30:00"
+ */
+export function timestampToDateTime(timestamp) {
+  const date = new Date(parseInt(timestamp) * 1000);
+  return date
+    .toLocaleString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+    })
+    .replace(/\//g, '-');
+}
+
+/**
  * 跳转到分时图
  * @param {string} code 代码
  * @param {string[]} stockCode 跟踪代码数组
@@ -170,118 +217,173 @@ export function getStocksByConceptCode(conceptCode) {
  * 返回的数据结构为：
  * {
  * "177:HK0700": {
- *   1752629400: {JUNJIA: "1.4090", NEW: "1.4090", VOL: "17104500.000", money: "24100241.000"}
- *   1752629460: {JUNJIA: "1.4118", NEW: "1.4170", VOL: "108021700.000", money: "152508600.000"}
- * },
- * "20:513050": {
- *   1752629400: {JUNJIA: "1.4090", NEW: "1.4090", VOL: "17104500.000", money: "24100241.000"}
- *   1752629460: {JUNJIA: "1.4118", NEW: "1.4170", VOL: "108021700.000", money: "152508600.000"}
+ *   "09:30:00": {
+ *     JUNJIA: "1.4090",
+ *     NEW: "1.4090",
+ *     VOL: "17104500.000",
+ *     money: "24100241.000",
+ *     changePercent: 2.5,  // 新增：涨跌幅百分比
+ *     preClose: 1.3750     // 新增：昨收价
+ *   }
+ *   "09:31:00": {
+ *     JUNJIA: "1.4118",
+ *     NEW: "1.4170",
+ *     VOL: "108021700.000",
+ *     money: "152508600.000",
+ *     changePercent: 3.05, // 新增：涨跌幅百分比
+ *     preClose: 1.3750     // 新增：昨收价
+ *   }
  * }
  * }
- * 1752629400 是时间戳，单位是秒
- * 注意：VOL 和 money 字段已经过处理，第一个数据点的成交量和成交额保持不变，后续数据点的成交量和成交额已计算为增量值
+ * 注意：
+ * 1. 时间键已转换为 HH:mm:00 格式，无需再次转换
+ * 2. VOL 和 money 字段已经过处理，第一个数据点的成交量和成交额保持不变，后续数据点的成交量和成交额已计算为增量值
+ * 3. 新增 changePercent 字段：涨跌幅百分比，保留2位小数
+ * 4. 新增 preClose 字段：昨收价，用于计算涨跌幅
  */
 export async function fetchMinuteData(stockCodes, date = null) {
-  return new Promise((resolve, reject) => {
-    // 如果没有指定日期，使用当前日期
-    const targetDate =
-      date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return new Promise(async (resolve, reject) => {
+    try {
+      // 如果没有指定日期，使用当前日期
+      const targetDate =
+        date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
 
-    // 第一步：请求分时数据
-    window.API.use({
-      method: 'Quote.request',
-      data: {
-        code: stockCodes,
-        type: ['NEW', 'VOL', 'JUNJIA', 'money', 'ZHANGDIEFU'],
-        period: 'min',
-        begin: targetDate,
-        withmarket: false,
-        end: targetDate,
-        timeFmt: 1,
-      },
-      success: (data) => {
-        // 第二步：获取详细数据
-        window.API.use({
-          method: 'Quote.getData2',
-          data: {
-            code: stockCodes,
-            withmarket: false,
-            type: ['NEW', 'VOL', 'JUNJIA', 'money', 'ZHANGDIEFU'],
-            period: 'min',
-            timeStamp: 1,
-            updateMode: 1,
-            time: {
-              begin: targetDate,
-              end: targetDate,
-              timeFmt: 1,
+      // 首先获取昨收价
+      const preCloseData = {};
+      try {
+        const historyData = await fetchHistoryData(
+          stockCodes,
+          targetDate,
+          targetDate
+        );
+        for (const [stockCode, stockData] of Object.entries(historyData)) {
+          if (stockData && stockData[targetDate] && stockData[targetDate].PRE) {
+            preCloseData[stockCode] = parseFloat(stockData[targetDate].PRE);
+          }
+        }
+      } catch (error) {
+        console.warn('获取昨收价失败，将使用默认值:', error);
+      }
+
+      // 第一步：请求分时数据
+      window.API.use({
+        method: 'Quote.request',
+        data: {
+          code: stockCodes,
+          type: ['NEW', 'VOL', 'JUNJIA', 'money', 'ZHANGDIEFU'],
+          period: 'min',
+          begin: targetDate,
+          withmarket: false,
+          end: targetDate,
+          timeFmt: 1,
+        },
+        success: (data) => {
+          // 第二步：获取详细数据
+          window.API.use({
+            method: 'Quote.getData2',
+            data: {
+              code: stockCodes,
+              withmarket: false,
+              type: ['NEW', 'VOL', 'JUNJIA', 'money', 'ZHANGDIEFU'],
+              period: 'min',
+              timeStamp: 1,
+              updateMode: 1,
+              time: {
+                begin: targetDate,
+                end: targetDate,
+                timeFmt: 1,
+              },
             },
-          },
-          success: (data) => {
-            try {
-              const parsedData = JSON.parse(data);
-              console.log('fetchMinuteData: 获取分时数据完成', parsedData);
-
-              // 处理成交量计算
-              const processedData = {};
-              for (const [stockCode, timeData] of Object.entries(parsedData)) {
-                // 按时间戳排序
-                const sortedEntries = Object.entries(timeData).sort(
-                  (a, b) => parseInt(a[0]) - parseInt(b[0])
+            success: (data) => {
+              try {
+                const parsedData = JSON.parse(data);
+                console.log(
+                  'fetchMinuteData: 获取分时原始数据完成',
+                  parsedData
                 );
 
-                const processedTimeData = {};
-                sortedEntries.forEach(([timestamp, values], index) => {
-                  // 计算成交量：第一个数据保持不变，后续数据等于当前数据减去上一个数据
-                  let calculatedVol = parseFloat(values.VOL || 0);
-                  if (index > 0) {
-                    const prevValues = sortedEntries[index - 1][1];
-                    const prevVol = parseFloat(prevValues.VOL || 0);
-                    calculatedVol = Math.max(0, calculatedVol - prevVol); // 确保不为负数
-                  }
+                // 处理成交量计算
+                const processedData = {};
+                for (const [stockCode, timeData] of Object.entries(
+                  parsedData
+                )) {
+                  const processedTimeData = {};
+                  const entries = Object.entries(timeData);
+                  entries.forEach(([timestamp, values], index) => {
+                    // 计算成交量：第一个数据保持不变，后续数据等于当前数据减去上一个数据
+                    let calculatedVol = parseFloat(values.VOL || 0);
+                    if (index > 0) {
+                      const prevValues = entries[index - 1][1];
+                      const prevVol = parseFloat(prevValues.VOL || 0);
+                      calculatedVol = Math.max(0, calculatedVol - prevVol); // 确保不为负数
+                    }
 
-                  // 计算成交额：第一个数据保持不变，后续数据等于当前数据减去上一个数据
-                  let calculatedMoney = parseFloat(values.money || 0);
-                  if (index > 0) {
-                    const prevValues = sortedEntries[index - 1][1];
-                    const prevMoney = parseFloat(prevValues.money || 0);
-                    calculatedMoney = Math.max(0, calculatedMoney - prevMoney); // 确保不为负数
-                  }
+                    // 计算成交额：第一个数据保持不变，后续数据等于当前数据减去上一个数据
+                    let calculatedMoney = parseFloat(values.money || 0);
+                    if (index > 0) {
+                      const prevValues = entries[index - 1][1];
+                      const prevMoney = parseFloat(prevValues.money || 0);
+                      calculatedMoney = Math.max(
+                        0,
+                        calculatedMoney - prevMoney
+                      ); // 确保不为负数
+                    }
 
-                  processedTimeData[timestamp] = {
-                    ...values,
-                    VOL: calculatedVol.toString(), // 使用计算后的成交量
-                    money: calculatedMoney.toString(), // 使用计算后的成交额
-                  };
-                });
+                    // 直接转换时间戳为时间字符串
+                    const timeStr = timestampToTimeString(timestamp);
 
-                processedData[stockCode] = processedTimeData;
+                    // 计算涨跌幅
+                    const currentPrice = parseFloat(
+                      values.NEW || values.JUNJIA || 0
+                    );
+                    const preClose = preCloseData[stockCode];
+                    let changePercent = 0;
+                    if (preClose && preClose > 0) {
+                      changePercent =
+                        ((currentPrice - preClose) / preClose) * 100;
+                    }
+
+                    processedTimeData[timeStr] = {
+                      ...values,
+                      VOL: calculatedVol.toString(), // 使用计算后的成交量
+                      money: calculatedMoney.toString(), // 使用计算后的成交额
+                      changePercent: parseFloat(changePercent.toFixed(2)), // 涨跌幅百分比，保留2位小数
+                      preClose: preClose || null, // 昨收价
+                    };
+                  });
+
+                  processedData[stockCode] = processedTimeData;
+                }
+
+                resolve(processedData);
+              } catch (error) {
+                console.error('解析分时数据失败:', error);
+                reject(error);
               }
-
-              resolve(processedData);
-            } catch (error) {
-              console.error('解析分时数据失败:', error);
+            },
+            error: (error) => {
+              console.error('获取分时详细数据失败:', error);
               reject(error);
-            }
-          },
-          error: (error) => {
-            console.error('获取分时详细数据失败:', error);
-            reject(error);
-          },
-          notClient: () => {
-            console.error('API客户端不可用');
-            reject(new Error('API客户端不可用'));
-          },
-        });
-      },
-      error: (error) => {
-        console.error('请求分时数据失败:', error);
-        reject(error);
-      },
-      notClient: () => {
-        console.error('API客户端不可用');
-        reject(new Error('API客户端不可用'));
-      },
-    });
+            },
+            notClient: () => {
+              console.error('API客户端不可用');
+              reject(new Error('API客户端不可用'));
+            },
+          });
+        },
+        error: (error) => {
+          console.error('请求分时数据失败:', error);
+          reject(error);
+        },
+        notClient: () => {
+          console.error('API客户端不可用');
+          reject(new Error('API客户端不可用'));
+        },
+      });
+    } catch (error) {
+      console.error('fetchMinuteData 执行失败:', error);
+      reject(error);
+    }
   });
 }
 

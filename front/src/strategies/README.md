@@ -1,0 +1,96 @@
+# 股票交易策略模块
+
+本目录包含各种基于技术分析的股票买卖策略方法。
+
+## 目录结构
+
+```
+strategies/
+├── index.js              # 策略管理器主入口
+├── sellPointAnalysis.js  # 卖出点分析策略
+└── README.md            # 说明文档
+```
+
+## 策略列表
+
+### 1. 卖出点分析策略 (sellPointAnalysis.js)
+
+基于分时图量价关系的卖出点检测策略，包含以下检测逻辑：
+
+- **高位放量滞涨**: 检测最高价附近成交量放大但价格停滞的情况
+- **首次回调**: 检测从最高点回落 1%以上的回调信号
+- **反弹乏力**: 检测反弹时成交量低于前高的情况
+- **尾盘破位**: 检测最后 30 分钟放量下跌的情况
+
+#### 使用方法
+
+```javascript
+import {
+  analyzeSellPoints,
+  convertRawData,
+} from '@/strategies/sellPointAnalysis.js';
+
+// 转换原始数据
+const stockData = convertRawData(rawData);
+
+// 执行分析
+const results = analyzeSellPoints(stockData);
+
+// 查看结果
+console.log('分析结果:', results);
+```
+
+#### 返回结果格式
+
+```javascript
+{
+  peakVolumeStagnation: {
+    time: "2024-01-01 14:30:00",
+    price: 10.50,
+    volume: "1000000",
+    description: "高位放量但价格停滞，主力可能出货",
+    signal: "strong"
+  },
+  firstPullback: { /* ... */ },
+  weakRebound: { /* ... */ },
+  endBreakdown: { /* ... */ },
+  summary: {
+    riskLevel: "medium",  // low, medium, high
+    sellSignals: 2,
+    recommendations: ["检测到高位放量滞涨，建议减仓", "检测到首次回调，注意风险"]
+  }
+}
+```
+
+## 策略管理器
+
+使用策略管理器可以统一管理所有策略：
+
+```javascript
+import { strategyManager, STRATEGY_TYPES } from '@/strategies/index.js';
+
+// 获取所有可用策略
+const strategies = strategyManager.getAvailableStrategies();
+
+// 执行指定策略
+const results = strategyManager.executeStrategy(
+  STRATEGY_TYPES.SELL_POINT_ANALYSIS,
+  stockData
+);
+```
+
+## 扩展新策略
+
+要添加新的策略，请按以下步骤操作：
+
+1. 在 `strategies/` 目录下创建新的策略文件
+2. 在 `index.js` 中导入并注册新策略
+3. 更新 `STRATEGY_TYPES` 枚举
+4. 在 `StrategyManager.registerStrategies()` 方法中注册新策略
+
+## 注意事项
+
+- 所有策略函数都应该返回统一格式的结果对象
+- 建议包含错误处理和数据验证
+- 策略结果应该包含可读的描述信息
+- 考虑添加策略的置信度或信号强度指标

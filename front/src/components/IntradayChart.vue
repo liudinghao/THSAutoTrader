@@ -56,6 +56,12 @@ const generateAStockTimeAxis = () => {
 
 const timeAxis = generateAStockTimeAxis()
 
+// 股票颜色池 - 统一的颜色定义
+const STOCK_COLOR_POOL = [
+  '#1890ff', '#f56c6c', '#67c23a', '#e6a23c', '#98D8C8',
+  '#ff7875', '#95de64', '#ffc53d', '#b37feb', '#ff85c0'
+]
+
 // 处理分时数据，支持JUNJIA均线
 const processStockData = (stock) => {
   if (!stock.minuteData || stock.minuteData.length === 0) {
@@ -245,14 +251,9 @@ const calculateMultiStockChangeRange = (mainStock, otherStocks) => {
 
 // 生成股票颜色
 const generateStockColors = (count) => {
-  const colors = [
-    '#1890ff', '#f56c6c', '#67c23a', '#e6a23c', '#98D8C8',
-    '#ff7875', '#95de64', '#ffc53d', '#b37feb', '#ff85c0'
-  ]
-  
   const result = []
   for (let i = 0; i < count; i++) {
-    result.push(colors[i % colors.length])
+    result.push(STOCK_COLOR_POOL[i % STOCK_COLOR_POOL.length])
   }
   return result
 }

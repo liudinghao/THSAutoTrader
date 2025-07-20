@@ -1,7 +1,7 @@
 <template>
   <div class="multi-stock-chart">
     <div class="header">
-      <h2>叠加分时图</h2>
+      <h2>可视化操盘</h2>
       <div class="header-controls">
         <el-date-picker
           v-model="currentDate"
@@ -67,7 +67,7 @@
     </div>
 
     <div class="stock-list">
-      <h3>已添加的股票</h3>
+      <h3>监控标的</h3>
       <el-table :data="stockList" style="width: 100%">
         <el-table-column prop="marketName" label="市场" width="100" />
         <el-table-column prop="code" label="股票代码" width="120" />
@@ -110,7 +110,6 @@ const newStockName = ref('')
 const stockList = ref([])
 const chartData = ref({})
 const isLoading = ref(false)
-const preCloseCache = ref(new Map()) // 缓存昨收价
 const refreshTimer = ref(null) // 定时刷新定时器
 const isTradingTime = ref(false) // 是否在交易时间内
 
@@ -129,15 +128,6 @@ const marketMap = {
   '20': '港股基金'
 }
 
-// 预定义的颜色池 - 确保颜色足够丰富且易于区分
-const colorPool = ['#FF6B6B', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD', '#98D8C8', '#F7DC6F',
-  '#FF8E8E', '#6BCFCF', '#5BC0DE', '#A8CF', '#FFD93D', '#E6B4', '#B8E0', '#FFB6',
-  '#FF69B4', '#20AA', '#4682B4', '#3232', '#FFD700', '#9370DB', '#3CB371', '#FF6347',  '#00D1', '#4169E1', '#8FBC8', '#FF450', '#DA70D6', '#00FF', '#FF1493', '#191970', '#FF7F50', '#6495ED', '#DC143', '#009A', '#FF69B4', '#1E90FF', '#FF6347', '#32D32',
-  '#FF8C0', '#8A2BE2', '#007', '#FF1493', '#00FF', '#FF450', '#3232', '#FF69B4'
-]
-
-// 已使用的颜色集合，用于避免重复
-const usedColors = new Set()
 
 
 const addStock = async () => {
@@ -148,7 +138,6 @@ const addStock = async () => {
   
   const marketId = newMarketId.value
   const code = newStockCode.value.toUpperCase()
-  const stockKey = `${marketId}_${code}`
   
   if (stockList.value.find(stock => stock.marketId === marketId && stock.code === code)) {
     ElMessage.warning('该股票已添加')
@@ -157,8 +146,7 @@ const addStock = async () => {
 
   // 优先使用用户输入的名称，如果没有则使用模拟数据或股票代码
   const userStockName = newStockName.value.trim()
-  const stockInfo = { name: userStockName || code, color: getColorByIndex(stockList.value.length) }
-  const finalStockName = userStockName || stockInfo.name
+  const finalStockName = userStockName || code
   
   const newStock = {
     marketId,
@@ -168,7 +156,6 @@ const addStock = async () => {
     price: '0.00',
     change: '0.00',
     preClose: null, // 昨收价
-    color: stockInfo.color,
     minuteData: []
   }
   
@@ -186,17 +173,8 @@ const addStock = async () => {
 
 const removeStock = (index) => {
   stockList.value.splice(index,1)
-  // 重新分配颜色以确保顺序正确
-  ensureStockColors()
   saveToLocalStorage()
   // 数据更新后，IntradayChart 的 watch 会自动触发更新
-}
-
-
-
-// 按顺序分配颜色
-const getColorByIndex = (index) => {
-  return colorPool[index % colorPool.length]
 }
 
 // 保存数据到 localStorage
@@ -215,20 +193,11 @@ const loadFromLocalStorage = () => {
     const savedData = localStorage.getItem(STORAGE_KEY)
     if (savedData) {
       stockList.value = JSON.parse(savedData)
-      // 确保所有股票都有正确的颜色
-      ensureStockColors()
     }
   } catch (error) {
     console.error('从 localStorage 加载数据失败:', error)
     ElMessage.error('加载保存的数据失败')
   }
-}
-
-// 确保所有股票都有正确的颜色分配
-const ensureStockColors = () => {
-  stockList.value.forEach((stock, index) => {
-    stock.color = getColorByIndex(index)
-  })
 }
 
 // 判断是否在交易时间内
@@ -248,15 +217,7 @@ const checkTradingTime = async () => {
   } catch (error) {
     console.error('检查交易时间失败:', error)
     // 如果 API 调用失败，回退到本地时间判断
-    const now = new Date()
-    const currentTime = now.getHours() * 100 + now.getMinutes()
-    
-    // 判断是否为工作日（周一到周五）
-    const isWeekday = now.getDay() >= 1 && now.getDay() <= 5
-    // 判断是否在交易时间内
-    const isMorningSession = currentTime >= 930 && currentTime <= 1130
-    const isAfternoonSession = currentTime >= 1300 && currentTime <= 1500
-    return isWeekday && (isMorningSession || isAfternoonSession)
+    return false
   }
 }
 
@@ -315,53 +276,37 @@ const refreshMinuteDataOnly = async () => {
         if (stockData) {
           console.log(`更新股票 ${stock.code} 的分时数据:`, stockData)
           
-          // 先按时间戳排序，确保数据按时间顺序处理
-          const sortedEntries = Object.entries(stockData).sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
-          
           // 转换数据格式为 ECharts 需要的格式，使用涨跌幅作为Y轴数据
-          const chartData = sortedEntries.map(([timestamp, values]) => {
-            // 将时间戳转换为时分字符串，格式为 HH:mm:00（与时间轴格式保持一致）
-            const date = new Date(parseInt(timestamp) * 1000)
-            const hours = date.getHours().toString().padStart(2, '0')
-            const minutes = date.getMinutes().toString().padStart(2, '0')
-            const timeStr = `${hours}:${minutes}:00` // 统一使用 HH:mm:00
-            
-            const currentPrice = parseFloat(values.NEW || values.JUNJIA || 0)
-            const preClose = stock.preClose || preCloseCache.value.get(stockKey)
-            
-            // 计算涨跌幅
-            let changePercent = 0
-            if (preClose && preClose > 0) {
-              changePercent = ((currentPrice - preClose) / preClose) * 100
-            }
-            
+          const chartData = Object.entries(stockData).map(([timeStr, values]) => {
             return [
-              timeStr, // 使用时分字符串，格式为 HH:mm:00
-              parseFloat(changePercent.toFixed(2)) // 涨跌幅作为Y轴数据
+              timeStr, // 时间字符串已经是 HH:mm:00 格式
+              values.changePercent
             ]
           })
           
           // 保存原始数据用于计算均价线等
           const rawData = {}
-          sortedEntries.forEach(([timestamp, values]) => {
-            const date = new Date(parseInt(timestamp) * 1000)
-            const hours = date.getHours().toString().padStart(2, '0')
-            const minutes = date.getMinutes().toString().padStart(2, '0')
-            const timeStr = `${hours}:${minutes}:00`
-            
+          Object.entries(stockData).forEach(([timeStr, values]) => {
             rawData[timeStr] = {
               NEW: values.NEW,
               JUNJIA: values.JUNJIA,
               VOL: parseFloat(values.VOL || 0), // API 已经计算好的成交量
-              money: values.money
+              money: values.money,
+              changePercent: values.changePercent,
+              preClose: values.preClose // 从API数据中获取昨收价
             }
           })
+          
+          // 从第一个时间点的数据中获取昨收价
+          const firstTimeData = Object.values(stockData)[0]
+          const preClose = firstTimeData?.preClose || null
           
           // 更新股票对象
           updatedStockList[index] = {
             ...stock,
             minuteData: chartData,
-            rawData: rawData
+            rawData: rawData,
+            preClose: preClose // 设置昨收价
           }
           
           // 更新股票的最新价格和涨跌幅
@@ -400,32 +345,6 @@ const onDateChange = async (newDate) => {
   }
 }
 
-// 获取昨收价
-const fetchPreClose = async (stockList) => {
-  if (stockList.length === 0) return
-  
-  try {
-    const stockCodes = stockList.map(stock => `${stock.marketId}:${stock.code}`)
-    const yesterdayStr = currentDate.value;
-    
-    // 使用 fetchHistoryData 获取昨天的收盘价作为昨收价
-    const historyData = await fetchHistoryData(stockCodes, yesterdayStr, yesterdayStr)
-    stockList.forEach(stock => {
-      const stockKey = `${stock.marketId}:${stock.code}`
-      const stockData = historyData[stockKey]
-      
-      if (stockData && stockData[yesterdayStr] && stockData[yesterdayStr].PRE) {
-        const preClose = parseFloat(stockData[yesterdayStr].PRE)
-        stock.preClose = preClose
-        // 缓存昨收价，键为 marketId:code
-        preCloseCache.value.set(stockKey, preClose)
-      }
-    })
-  } catch (error) {
-    console.error('获取昨收价失败:', error)
-  }
-}
-
 // 获取真实分时数据
 const fetchMinuteDataFromApi = async () => {
   if (stockList.value.length === 0 || !currentDate.value) return
@@ -433,12 +352,10 @@ const fetchMinuteDataFromApi = async () => {
   try {
     isLoading.value = true
     
-    // 首先获取昨收价
-    await fetchPreClose(stockList.value)
-    
     // 将股票对象数组转换为股票代码数组
     const stockCodes = stockList.value.map(stock => `${stock.marketId}:${stock.code}`)
     const data = await fetchMinuteData(stockCodes, currentDate.value)
+    console.log('获取到的分时数据:', data)
     // 处理返回的数据
     if (data) {
       // 创建新的股票列表来触发响应式更新
@@ -453,28 +370,11 @@ const fetchMinuteDataFromApi = async () => {
           const chartData = []
           const rawData = {}
           
-          // 先按时间戳排序，确保数据按时间顺序处理
-          const sortedEntries = Object.entries(stockData).sort((a, b) => parseInt(a[0]) - parseInt(b[0]))
-          
-          sortedEntries.forEach(([timestamp, values], index) => {
-            // 将时间戳转换为时分字符串，格式为 HH:mm:00（与时间轴格式保持一致）
-            const date = new Date(parseInt(timestamp) * 1000)
-            const hours = date.getHours().toString().padStart(2, '0')
-            const minutes = date.getMinutes().toString().padStart(2, '0')
-            const timeStr = `${hours}:${minutes}:00`
-            
-            const currentPrice = parseFloat(values.NEW || values.JUNJIA || 0)
-            const preClose = stock.preClose || preCloseCache.value.get(stockKey)
-            
-            // 计算涨跌幅
-            let changePercent = 0
-            if (preClose && preClose > 0) {
-              changePercent = ((currentPrice - preClose) / preClose) * 100
-            }
-            
+          const entries = Object.entries(stockData)
+          entries.forEach(([timeStr, values], index) => {
             chartData.push([
-              timeStr, // 使用时分字符串，格式为 HH:mm:00
-              parseFloat(changePercent.toFixed(2)) // 涨跌幅作为Y轴数据
+              timeStr, // 时间字符串已经是 HH:mm:00 格式
+              values.changePercent
             ])
             
             // 保存原始数据用于计算均价线等，API 已经计算好的成交量
@@ -482,18 +382,22 @@ const fetchMinuteDataFromApi = async () => {
               NEW: values.NEW,
               JUNJIA: values.JUNJIA,
               VOL: parseFloat(values.VOL || 0), // API 已经计算好的成交量
-              money: values.money
+              money: values.money,
+              changePercent: values.changePercent,
+              preClose: values.preClose // 从API数据中获取昨收价
             }
           })
-          
-          // 按时间排序
-          chartData.sort((a, b) => new Date(`2025/01/01 ${a[0]}`) - new Date(`2025/01/01 ${b[0]}`))
+
+          // 从第一个时间点的数据中获取昨收价
+          const firstTimeData = Object.values(stockData)[0]
+          const preClose = firstTimeData?.preClose || null
           
           // 更新股票对象
           updatedStockList[index] = {
             ...stock,
             minuteData: chartData,
-            rawData: rawData
+            rawData: rawData,
+            preClose: preClose // 设置昨收价
           }
           
           // 更新股票的最新价格和涨跌幅
