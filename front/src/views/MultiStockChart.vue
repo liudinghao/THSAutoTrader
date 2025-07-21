@@ -234,7 +234,7 @@ const checkTradingTime = async () => {
     // 使用第一只股票的代码检查交易时间
     const firstStock = stockList.value[0]
     const stockCode = `${firstStock.marketId}:${firstStock.code}`
-    const result = await isTradeTime(stockCode)
+    const result = await isTradeTime(firstStock.code)
     
     // API 返回 0 为非交易时间，非 0 为交易时间
     return result !== 0
@@ -380,8 +380,17 @@ const fetchMinuteDataFromApi = async () => {
     const data = await fetchMinuteData(stockCodes, currentDate.value)
     console.log('data:',data)
     if (data) {
-      
+      const mainStock = stockList.value[0];
+      const mainStockData = data[`${mainStock.marketId}:${mainStock.code}`];
+      // 获取卖点
+      const sellPoints = analyzeSellPoints(mainStockData)
+      console.log('sellPoints:',sellPoints)
       const { updatedStockList } = processMinuteData(data, stockList.value)
+      
+      // 将卖点数据添加到主股票中
+      if (updatedStockList.length > 0 && sellPoints.length > 0) {
+        updatedStockList[0].sellPoints = sellPoints
+      }
       
       // 触发响应式更新
       stockList.value.splice(0, stockList.value.length, ...updatedStockList)

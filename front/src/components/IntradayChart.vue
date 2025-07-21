@@ -259,36 +259,83 @@ const generateStockColors = (count) => {
 }
 
 // 生成卖出标记点配置
-const generateSellMarkPoint = (prices, timeIndex = 10) => {
-  if (!prices || prices.length === 0 || !prices[timeIndex]) {
+const generateSellMarkPoint = (stock, timeAxis) => {
+  if (!stock.sellPoints || stock.sellPoints.length === 0) {
+    return null
+  }
+  
+  const markPointData = stock.sellPoints.map(sellPoint => {
+    // 找到卖点对应的时间索引
+    const timeIndex = timeAxis.findIndex(time => time === sellPoint.time)
+    if (timeIndex === -1) return null
+    
+    // 根据卖点类型设置不同的样式
+    let symbol = 'arrow'
+    let symbolRotate = 180
+    let color = '#f56c6c'
+    let label = sellPoint.type
+    
+    switch (sellPoint.type) {
+      case '高位放量滞涨':
+        symbol = 'diamond'
+        symbolRotate = 0
+        color = '#ff4d4f'
+        label = '高位滞涨'
+        break
+      case '首次回调':
+        symbol = 'arrow'
+        symbolRotate = 180
+        color = '#fa8c16'
+        label = '首次回调'
+        break
+      case '反弹乏力':
+        symbol = 'circle'
+        symbolRotate = 0
+        color = '#722ed1'
+        label = '反弹乏力'
+        break
+      case '尾盘破位':
+        symbol = 'rect'
+        symbolRotate = 0
+        color = '#eb2f96'
+        label = '尾盘破位'
+        break
+      default:
+        symbol = 'arrow'
+        symbolRotate = 180
+        color = '#f56c6c'
+        label = '卖点'
+    }
+    
+    return {
+      coord: [timeIndex, sellPoint.price],
+      value: sellPoint.price,
+      symbol: symbol,
+      symbolRotate: symbolRotate,
+      itemStyle: {
+        color: color
+      },
+      label: {
+        show: true,
+        formatter: label,
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: 'bold',
+        backgroundColor: color,
+        padding: [2, 6],
+        borderRadius: 4,
+        position: 'top'
+      }
+    }
+  }).filter(item => item !== null)
+  
+  if (markPointData.length === 0) {
     return null
   }
   
   return {
-    symbol: 'arrow',
-    symbolSize: 16,
-    symbolRotate: 180,
-    itemStyle: {
-      color: '#f56c6c'
-    },
-    label: {
-      show: true,
-      formatter: '卖',
-      color: '#fff',
-      fontSize: 10,
-      fontWeight: 'bold',
-      backgroundColor: 'rgba(245, 108, 108, 0.8)',
-      padding: [2, 6],
-      borderRadius: 4,
-      position: 'top'
-    },
-    data: [
-      {
-        type: 'max',
-        valueIndex: 0,
-        coord: [timeIndex, prices[timeIndex]]
-      }
-    ]
+    symbolSize: 12,
+    data: markPointData
   }
 }
 
@@ -353,7 +400,7 @@ const updateProfessionalChart = () => {
       width: 2
     },
     markLine: markLine,
-    markPoint: generateSellMarkPoint(mainStock.prices, 10)
+    markPoint: generateSellMarkPoint(stock, timeAxis)
   })
   
   // 主股票的均价线（不显示在图例中）

@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "vite build",
     "build:prod": "vite build && echo 构建完成，文件已输出到html目录",
-    "preview": "vite preview",
-    "serve": "vite preview"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
