@@ -44,7 +44,12 @@
         placeholder="请输入股票代码"
         style="width: 200px; margin-right: 10px"
         @keyup.enter="addStock"
-      />
+        :loading="isSearching"
+      >
+        <template #prefix>
+          <el-icon v-if="isSearching" class="is-loading"><Loading /></el-icon>
+        </template>
+      </el-input>
       <el-input
         v-model="newStockName"
         placeholder="请输入股票名称"
@@ -52,6 +57,16 @@
         @keyup.enter="addStock"
       />
       <el-button type="primary" @click="addStock">添加</el-button>
+    </div>
+
+    <!-- summary 展示区 -->
+    <div v-if="mainStockSummary" class="summary-info" style="margin-bottom: 10px;">
+      <el-alert
+        :title="`风险等级：${mainStockSummary.riskLevel}，卖出信号数：${mainStockSummary.sellSignals}`"
+        type="warning"
+        show-icon
+        :description="mainStockSummary.recommendations.join('；')"
+      />
     </div>
 
     <!-- 图表容器 -->
@@ -71,7 +86,7 @@
 
     <!-- 股票列表 -->
     <div class="stock-list">
-      <h3>监控标的</h3>
+      <h3>相似度标的</h3>
       <el-table :data="stockList" style="width: 100%">
         <el-table-column prop="marketName" label="市场" width="100" />
         <el-table-column prop="code" label="股票代码" width="120" />
@@ -103,11 +118,11 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { Refresh, Loading } from '@element-plus/icons-vue'
 import { fetchMinuteData, getLatestTradeDate, isTradeTime } from '../utils/quoteApi'
 import IntradayChart from '../components/IntradayChart.vue'
 import { analyzeSellPoints } from '../strategies/sellPointAnalysis'
-
+import { getLimitPrices } from '../utils/common'
 // ==================== 响应式数据 ====================
 const intradayChartRef = ref(null)
 const stockList = ref([]) // 股票列表
@@ -115,11 +130,13 @@ const isLoading = ref(false) // 加载状态
 const currentDate = ref('') // 当前选择的日期
 const refreshTimer = ref(null) // 定时刷新定时器
 const isTradingTime = ref(false) // 是否在交易时间内
+const mainStockSummary = ref(null)
 
 // 新增股票的表单数据
 const newMarketId = ref('17') // 默认选择沪市A股
 const newStockCode = ref('') // 股票代码输入
 const newStockName = ref('') // 股票名称输入
+const isSearching = ref(false) // 搜索状态
 
 // ==================== 常量定义 ====================
 const STORAGE_KEY = 'multiStockChart_stockList' // localStorage 存储键
@@ -134,6 +151,46 @@ const marketMap = {
 }
 
 // ==================== 股票管理功能 ====================
+
+/**
+ * 搜索股票信息
+ */
+const searchStock = async (keyword) => {
+  if (!keyword || keyword.length !== 6) return
+  
+  isSearching.value = true
+  try {
+    const response = await fetch(`https://www.wttiao.com/moni/quote/search?keyword=${keyword}`)
+    const result = await response.json()
+    console.log("searchStock result:", result)
+    if (result.code === 0 && result.data && result.data.length > 0) {
+      const stock = result.data[0]
+      // 填充股票名称
+      newStockName.value = stock.name || ''
+      
+      // 使用接口返回的marketId
+      if (stock.marketId && marketMap[stock.marketId]) {
+        newMarketId.value = stock.marketId.toString()
+      } else {
+        // 如果接口没有返回marketId，则根据股票代码前缀设置市场
+        if (keyword.startsWith('6')) {
+          newMarketId.value = '17' // 沪市A股
+        } else if (keyword.startsWith('0') || keyword.startsWith('3')) {
+          newMarketId.value = '33' // 深市A股
+        }
+      }
+      
+      ElMessage.success(`找到股票: ${stock.name}(${keyword})`)
+    } else {
+      ElMessage.warning('未找到该股票信息')
+    }
+  } catch (error) {
+    console.error('搜索股票失败:', error)
+    ElMessage.error('搜索股票失败')
+  } finally {
+    isSearching.value = false
+  }
+}
 
 /**
  * 添加股票到监控列表
@@ -382,9 +439,14 @@ const fetchMinuteDataFromApi = async () => {
     if (data) {
       const mainStock = stockList.value[0];
       const mainStockData = data[`${mainStock.marketId}:${mainStock.code}`];
+      // 获取涨跌停价
+      const { limitUpPrice, limitDownPrice } = getLimitPrices(mainStock.code, mainStock.preClose);
+      mainStock.limitUpPrice = limitUpPrice;
+      mainStock.limitDownPrice = limitDownPrice;
       // 获取卖点
-      const sellPoints = analyzeSellPoints(mainStockData)
-      console.log('sellPoints:',sellPoints)
+      const { sellPoints, summary } = analyzeSellPoints(mainStockData, mainStock)
+      mainStockSummary.value = summary
+      console.log('sellPoints:', mainStockData, sellPoints, summary)
       const { updatedStockList } = processMinuteData(data, stockList.value)
       
       // 将卖点数据添加到主股票中
@@ -493,6 +555,13 @@ onUnmounted(() => {
 })
 
 // ==================== 监听器 ====================
+
+watch(newStockCode, (newCode) => {
+  // 监听股票代码输入，当输入6位数字时自动搜索
+  if (newCode && newCode.length === 6 && /^\d{6}$/.test(newCode)) {
+    searchStock(newCode)
+  }
+})
 
 watch(stockList, (newVal, oldVal) => {
   console.log('stockList 发生变化:', {

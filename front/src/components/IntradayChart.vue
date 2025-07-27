@@ -24,7 +24,12 @@ const props = defineProps({
   height: {
     type: [String, Number],
     default: '500px'
-  }})
+  },
+  legendLabels: {
+    type: Object,
+    default: () => ({})
+  }
+})
 
 const emit = defineEmits(['chartUpdate', 'chartClick', 'dataPointClick'])
 
@@ -269,43 +274,11 @@ const generateSellMarkPoint = (stock, timeAxis) => {
     const timeIndex = timeAxis.findIndex(time => time === sellPoint.time)
     if (timeIndex === -1) return null
     
-    // 根据卖点类型设置不同的样式
-    let symbol = 'arrow'
-    let symbolRotate = 180
-    let color = '#f56c6c'
-    let label = sellPoint.type
-    
-    switch (sellPoint.type) {
-      case '高位放量滞涨':
-        symbol = 'diamond'
-        symbolRotate = 0
-        color = '#ff4d4f'
-        label = '高位滞涨'
-        break
-      case '首次回调':
-        symbol = 'arrow'
-        symbolRotate = 180
-        color = '#fa8c16'
-        label = '首次回调'
-        break
-      case '反弹乏力':
-        symbol = 'circle'
-        symbolRotate = 0
-        color = '#722ed1'
-        label = '反弹乏力'
-        break
-      case '尾盘破位':
-        symbol = 'rect'
-        symbolRotate = 0
-        color = '#eb2f96'
-        label = '尾盘破位'
-        break
-      default:
-        symbol = 'arrow'
-        symbolRotate = 180
-        color = '#f56c6c'
-        label = '卖点'
-    }
+    // 直接使用 sellPoint 的属性，无需 switch
+    const symbol = sellPoint.symbol || 'arrow'
+    const symbolRotate = sellPoint.symbolRotate || 0
+    const color = sellPoint.color || '#f56c6c'
+    const label = sellPoint.label || '卖点'
     
     return {
       coord: [timeIndex, sellPoint.price],
@@ -384,13 +357,20 @@ const updateProfessionalChart = () => {
     ]
   }
 
+  // 获取自定义图例标签
+  const getLegendLabel = (stock, index = 0) => {
+    const key = `${stock.code}_${index}`
+    return props.legendLabels[key] || props.legendLabels[stock.code] || `${stock.name}(${stock.code})`
+  }
+
   // 生成系列数据
   const series = []
   const stockColors = generateStockColors(1 + otherStocks.length)
   
   // 主股票的价格线
+  const mainLegendLabel = getLegendLabel(stock, 0)
   series.push({
-    name: `${stock.name}(${stock.code})`,
+    name: mainLegendLabel,
     type: 'line',
     data: mainStock.prices,
     smooth: false,
@@ -398,6 +378,9 @@ const updateProfessionalChart = () => {
     lineStyle: {
       color: stockColors[0],
       width: 2
+    },
+    itemStyle: {
+      color: stockColors[0]
     },
     markLine: markLine,
     markPoint: generateSellMarkPoint(stock, timeAxis)
@@ -414,6 +397,9 @@ const updateProfessionalChart = () => {
       color: '#FFB400',
       width: 1,
       type: 'solid'
+    },
+    itemStyle: {
+      color: '#FFB400'
     },
     legendHoverLink: false
   })
@@ -456,6 +442,9 @@ const updateProfessionalChart = () => {
       lineStyle: {
         color: stockColors[index + 1],
         width: 1
+      },
+      itemStyle: {
+        color: stockColors[index + 1]
       }
     })
   })
