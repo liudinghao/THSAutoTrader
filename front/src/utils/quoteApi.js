@@ -247,7 +247,6 @@ export async function fetchMinuteData(stockCodes, date = null) {
       // 如果没有指定日期，使用当前日期
       const targetDate =
         date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
-
       // 首先获取昨收价
       const preCloseData = {};
       try {
@@ -589,6 +588,34 @@ export function getLatestTradeDate(date = null) {
   });
 }
 
+/**
+ * 获取上一个交易日
+ * @param {string} date 查询日期，格式：YYYYMMDD，如：20250719，默认为当前日期
+ * @returns {Promise<string>} 返回最近一个交易日的Promise
+ */
+export function getPreTradeDate(date = null) {
+  return new Promise((resolve, reject) => {
+    // 如果没有指定日期，使用当前日期
+    const targetDate =
+      date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+
+    window.API.use({
+      method: 'Quote.getPreSHTradeDate',
+      data: targetDate,
+      success: function (result) {
+        resolve(result);
+      },
+      error: function (error) {
+        console.error('获取最近交易日失败:', error);
+        reject(error);
+      },
+      notClient: () => {
+        console.error('API客户端不可用');
+        reject(new Error('API客户端不可用'));
+      },
+    });
+  });
+}
 /**
  * 检查是否在交易时间内
  * @param {string} stockCode 股票代码，如：'300033'

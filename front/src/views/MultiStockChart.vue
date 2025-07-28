@@ -88,7 +88,6 @@
     <div class="stock-list">
       <h3>相似度标的</h3>
       <el-table :data="stockList" style="width: 100%">
-        <el-table-column prop="marketName" label="市场" width="100" />
         <el-table-column prop="code" label="股票代码" width="120" />
         <el-table-column prop="name" label="股票名称" width="150" />
         <el-table-column prop="price" label="当前价格" width="100" />
@@ -97,6 +96,46 @@
             <span :class="getChangeClass(scope.row.change)">
               {{ scope.row.change > 0 ? '+' : '' }}{{ scope.row.change }}%
             </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="相似度" width="120">
+          <template #default="scope">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <el-progress 
+                v-if="scope.$index !== 0"
+                :percentage="calculateSimilarityData(scope.row, scope.$index).similarity"
+                :color="calculateSimilarityData(scope.row, scope.$index).color"
+                :stroke-width="6"
+                :show-text="false"
+                style="width: 60px;"
+              />
+              <span :style="{ color: calculateSimilarityData(scope.row, scope.$index).color, fontSize: '12px', fontWeight: 'bold' }">
+                {{ scope.$index === 0 ? '--' : calculateSimilarityData(scope.row, scope.$index).similarity + '%' }}
+              </span>
+            </div>
+            <div style="font-size: 11px; color: #666; margin-top: 2px;">
+              {{ scope.$index === 0 ? '' : calculateSimilarityData(scope.row, scope.$index).label }}
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="昨日相似度" width="120">
+          <template #default="scope">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <el-progress 
+                v-if="scope.$index !== 0"
+                :percentage="calculateSimilarityData(scope.row, scope.$index).prevSimilarity || 0"
+                :color="calculateSimilarityData(scope.row, scope.$index).prevColor || '#909399'"
+                :stroke-width="6"
+                :show-text="false"
+                style="width: 60px;"
+              />
+              <span :style="{ color: calculateSimilarityData(scope.row, scope.$index).prevColor || '#909399', fontSize: '12px', fontWeight: 'bold' }">
+                {{ scope.$index === 0 ? '--' : (calculateSimilarityData(scope.row, scope.$index).prevSimilarity || 0) + '%' }}
+              </span>
+            </div>
+            <div style="font-size: 11px; color: #666; margin-top: 2px;">
+              {{ scope.$index === 0 ? '' : calculateSimilarityData(scope.row, scope.$index).prevLabel }}
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="100">
@@ -119,10 +158,11 @@
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Loading } from '@element-plus/icons-vue'
-import { fetchMinuteData, getLatestTradeDate, isTradeTime } from '../utils/quoteApi'
+import { fetchMinuteData, getLatestTradeDate, isTradeTime, getPreTradeDate } from '../utils/quoteApi'
 import IntradayChart from '../components/IntradayChart.vue'
 import { analyzeSellPoints } from '../strategies/sellPointAnalysis'
 import { getLimitPrices } from '../utils/common'
+import { calculateStockSimilarity } from '../strategies/pearsonCorrelation'
 // ==================== 响应式数据 ====================
 const intradayChartRef = ref(null)
 const stockList = ref([]) // 股票列表
@@ -339,26 +379,50 @@ const stopAutoRefresh = () => {
 // ==================== 数据获取和处理 ====================
 
 /**
+ * 获取前一个交易日日期
+ * @param {string} dateStr 当前日期字符串 (YYYYMMDD)
+ * @returns {Promise<string>} 前一个交易日日期字符串的Promise
+ */
+const getPreviousTradeDate = async (dateStr) => {
+  // 处理dateStr可能为空的情况
+  const targetDate = dateStr || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  
+  // 使用quoteApi.js的getPreTradeDate获取目标日期的前一个交易日
+  const previousTradeDate = await getPreTradeDate(targetDate);
+  return previousTradeDate;
+}
+
+/**
  * 处理API返回的分时数据，转换为应用所需格式
  * @param {Object} apiData API返回的原始数据
+ * @param {Object} yesterdayData 昨日API返回的原始数据
  * @param {Array} currentStockList 当前股票列表
  * @returns {Object} 处理结果 { updatedStockList, hasUpdates }
  */
-const processMinuteData = (apiData, currentStockList) => {
+const processMinuteData = (apiData, yesterdayData, currentStockList) => {
   const updatedStockList = [...currentStockList]
   let hasUpdates = false
   
   updatedStockList.forEach((stock, index) => {
     const stockKey = `${stock.marketId}:${stock.code}`
     const stockData = apiData[stockKey]
+    const yesterdayStockData = yesterdayData ? yesterdayData[stockKey] : null
     
     if (stockData) {
-      // 转换数据格式
+      // 转换当日数据格式
       const chartData = Object.entries(stockData).map(([timeStr, values]) => {
         return [timeStr, values.changePercent]
       })
       
-      // 保存原始数据
+      // 转换昨日数据格式
+      let prevChartData = []
+      if (yesterdayStockData) {
+        prevChartData = Object.entries(yesterdayStockData).map(([timeStr, values]) => {
+          return [timeStr, values.changePercent]
+        })
+      }
+      
+      // 保存当日原始数据
       const rawData = {}
       Object.entries(stockData).forEach(([timeStr, values]) => {
         rawData[timeStr] = {
@@ -371,6 +435,21 @@ const processMinuteData = (apiData, currentStockList) => {
         }
       })
       
+      // 保存昨日原始数据
+      const prevRawData = {}
+      if (yesterdayStockData) {
+        Object.entries(yesterdayStockData).forEach(([timeStr, values]) => {
+          prevRawData[timeStr] = {
+            NEW: values.NEW,
+            JUNJIA: values.JUNJIA,
+            VOL: parseFloat(values.VOL || 0),
+            money: values.money,
+            changePercent: values.changePercent,
+            preClose: values.preClose
+          }
+        })
+      }
+      
       // 从第一个时间点的数据中获取昨收价
       const firstTimeData = Object.values(stockData)[0]
       const preClose = firstTimeData?.preClose || null
@@ -380,7 +459,9 @@ const processMinuteData = (apiData, currentStockList) => {
         ...stock,
         minuteData: chartData,
         rawData: rawData,
-        preClose: preClose
+        preClose: preClose,
+        changePercent: chartData.map(item => item[1]),
+        prevChangePercent: prevChartData.map(item => item[1])
       }
       
       // 更新最新价格和涨跌幅
@@ -434,20 +515,38 @@ const fetchMinuteDataFromApi = async () => {
     isLoading.value = true
     
     const stockCodes = stockList.value.map(stock => `${stock.marketId}:${stock.code}`)
-    const data = await fetchMinuteData(stockCodes, currentDate.value)
-    console.log('data:',data)
-    if (data) {
-      const mainStock = stockList.value[0];
-      const mainStockData = data[`${mainStock.marketId}:${mainStock.code}`];
+    
+    // 获取当日数据
+    const todayData = await fetchMinuteData(stockCodes, currentDate.value)
+    
+    // 获取昨日数据
+    const yesterdayDate = await getPreviousTradeDate(currentDate.value)
+    console.log('yesterdayDate:', yesterdayDate, currentDate.value);
+    let yesterdayData = null
+    
+    try {
+      yesterdayData = await fetchMinuteData(stockCodes, yesterdayDate)
+      console.log('昨日数据获取成功:', yesterdayDate)
+    } catch (yesterdayError) {
+      console.warn('昨日数据获取失败，使用空数据:', yesterdayError.message)
+      yesterdayData = {}
+    }
+    
+    if (todayData) {
+      const mainStock = stockList.value[0]
+      const mainStockData = todayData[`${mainStock.marketId}:${mainStock.code}`]
+      
       // 获取涨跌停价
-      const { limitUpPrice, limitDownPrice } = getLimitPrices(mainStock.code, mainStock.preClose);
-      mainStock.limitUpPrice = limitUpPrice;
-      mainStock.limitDownPrice = limitDownPrice;
+      const { limitUpPrice, limitDownPrice } = getLimitPrices(mainStock.code, mainStock.preClose)
+      mainStock.limitUpPrice = limitUpPrice
+      mainStock.limitDownPrice = limitDownPrice
+      
       // 获取卖点
       const { sellPoints, summary } = analyzeSellPoints(mainStockData, mainStock)
       mainStockSummary.value = summary
-      console.log('sellPoints:', mainStockData, sellPoints, summary)
-      const { updatedStockList } = processMinuteData(data, stockList.value)
+      
+      // 处理并合并数据
+      const { updatedStockList } = processMinuteData(todayData, yesterdayData, stockList.value)
       
       // 将卖点数据添加到主股票中
       if (updatedStockList.length > 0 && sellPoints.length > 0) {
@@ -523,6 +622,140 @@ const getChangeClass = (change) => {
   if (num > 0) return 'positive-red'
   if (num < 0) return 'negative-green'
   return ''
+}
+
+/**
+ * 计算股票相似度数据
+ * @param {Object} stock 当前股票
+ * @param {number} index 股票索引
+ * @returns {Object} 相似度数据
+ */
+const calculateSimilarityData = (stock, index) => {
+  if (index === 0 || stockList.value.length === 0) {
+    return {
+      similarity: 0,
+      label: '--',
+      level: 'none',
+      color: '#909399',
+      prevSimilarity: null,
+      prevLabel: null,
+      prevColor: '#909399'
+    }
+  }
+  
+  const mainStock = stockList.value[0]
+  
+  if (!mainStock || !stock) {
+    return {
+      similarity: 0,
+      label: '无数据',
+      level: 'none',
+      color: '#909399',
+      prevSimilarity: null,
+      prevLabel: null,
+      prevColor: '#909399'
+    }
+  }
+  
+  // 获取股票的涨跌幅数据
+  const getStockChangeData = (stock, isPrevious = false) => {
+    const dataKey = isPrevious ? 'prevChangePercent' : 'changePercent'
+    
+    if (stock[dataKey] && stock[dataKey].length > 0) {
+      return stock[dataKey]
+    }
+    
+    if (stock.rawData) {
+      // 从rawData中提取涨跌幅数据
+      const timeKeys = Object.keys(stock.rawData).sort()
+      const changes = timeKeys.map(time => stock.rawData[time].changePercent || 0)
+      return changes
+    }
+    
+    if (stock.minuteData && stock.minuteData.length > 0) {
+      // 从minuteData中提取涨跌幅数据
+      return stock.minuteData.map(item => item[1] || 0)
+    }
+    
+    return []
+  }
+  
+  // 计算当日相似度
+  const mainData = getStockChangeData(mainStock)
+  const stockData = getStockChangeData(stock)
+  
+  // 计算上一日相似度
+  const prevMainData = getStockChangeData(mainStock, true)
+  const prevStockData = getStockChangeData(stock, true)
+  
+  const getColorByLevel = (level) => {
+    switch (level) {
+      case 'extremely-strong':
+      case 'strong':
+        return '#f56c6c'
+      case 'moderate':
+        return '#e6a23c'
+      case 'weak':
+        return '#409eff'
+      case 'very-weak':
+      case 'none':
+        return '#909399'
+      default:
+        return '#909399'
+    }
+  }
+  
+  try {
+    // 计算当日相似度
+    let similarity = 0
+    let label = '无数据'
+    let level = 'none'
+    
+    if (mainData.length > 0 && stockData.length > 0) {
+      const tempMainStock = { changePercent: mainData }
+      const tempStock = { changePercent: stockData }
+      const result = calculateStockSimilarity(tempMainStock, tempStock, 'changePercent')
+      similarity = result.similarity
+      label = result.label
+      level = result.level
+    }
+    
+    // 计算上一日相似度
+    let prevSimilarity = null
+    let prevLabel = null
+    let prevLevel = 'none'
+    
+    if (prevMainData.length > 0 && prevStockData.length > 0) {
+      const prevTempMainStock = { changePercent: prevMainData }
+      const prevTempStock = { changePercent: prevStockData }
+      const prevResult = calculateStockSimilarity(prevTempMainStock, prevTempStock, 'changePercent')
+      prevSimilarity = prevResult.similarity
+      prevLabel = prevResult.label
+      prevLevel = prevResult.level
+    }
+    
+    return {
+      similarity,
+      label,
+      level,
+      color: getColorByLevel(level),
+      prevSimilarity,
+      prevLabel,
+      prevLevel,
+      prevColor: getColorByLevel(prevLevel)
+    }
+  } catch (error) {
+    console.error('计算相似度失败:', error)
+    return {
+      similarity: 0,
+      label: '计算错误',
+      level: 'error',
+      color: '#909399',
+      prevSimilarity: null,
+      prevLabel: null,
+      prevColor: '#909399'
+    }
+  }
 }
 
 // ==================== 生命周期钩子 ====================

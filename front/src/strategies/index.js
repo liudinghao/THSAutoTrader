@@ -10,12 +10,22 @@ export {
   formatAnalysisResults,
 } from './sellPointAnalysis.js';
 
+// 导出皮尔逊相关性算法
+export {
+  calculatePearsonCorrelation,
+  calculateStockSimilarity,
+  calculateSimilarityMatrix,
+  getMostSimilarStocks,
+  getCorrelationLabel,
+} from './pearsonCorrelation.js';
+
 // 策略类型枚举
 export const STRATEGY_TYPES = {
   SELL_POINT_ANALYSIS: 'sell_point_analysis', // 卖出点分析
   VOLUME_PRICE_ANALYSIS: 'volume_price_analysis', // 量价关系分析
   TECHNICAL_INDICATORS: 'technical_indicators', // 技术指标
   PATTERN_RECOGNITION: 'pattern_recognition', // 形态识别
+  PEARSON_CORRELATION: 'pearson_correlation', // 皮尔逊相关性分析
 };
 
 /**
@@ -37,6 +47,19 @@ export class StrategyManager {
       name: '卖出点分析',
       description: '基于分时图量价关系的卖出点检测',
       execute: analyzeSellPoints,
+    });
+    
+    // 注册皮尔逊相关性分析策略
+    this.strategies.set(STRATEGY_TYPES.PEARSON_CORRELATION, {
+      name: '皮尔逊相关性分析',
+      description: '基于皮尔逊相关系数的股票相似度分析',
+      execute: (data) => {
+        const { stocks, dataType = 'changePercent' } = data || {};
+        if (!Array.isArray(stocks) || stocks.length < 2) {
+          throw new Error('至少需要两只股票才能进行相关性分析');
+        }
+        return getMostSimilarStocks(stocks, dataType);
+      },
     });
   }
 
