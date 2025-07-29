@@ -400,6 +400,9 @@ const getPreviousTradeDate = async (dateStr) => {
  * @returns {Object} 处理结果 { updatedStockList, hasUpdates }
  */
 const processMinuteData = (apiData, yesterdayData, currentStockList) => {
+  if (!currentStockList || !Array.isArray(currentStockList)) {
+    return { updatedStockList: [], hasUpdates: false }
+  }
   const updatedStockList = [...currentStockList]
   let hasUpdates = false
   
@@ -454,14 +457,18 @@ const processMinuteData = (apiData, yesterdayData, currentStockList) => {
       const firstTimeData = Object.values(stockData)[0]
       const preClose = firstTimeData?.preClose || null
       
-      // 更新股票对象
+      // 更新股票对象 - 只在有昨日数据时才更新prevChangePercent，否则保留原有数据
+      const prevChangePercentData = prevChartData.length > 0 ? 
+        prevChartData.map(item => item[1]) : 
+        (stock.prevChangePercent || [])
+      
       updatedStockList[index] = {
         ...stock,
         minuteData: chartData,
         rawData: rawData,
         preClose: preClose,
         changePercent: chartData.map(item => item[1]),
-        prevChangePercent: prevChartData.map(item => item[1])
+        prevChangePercent: prevChangePercentData
       }
       
       // 更新最新价格和涨跌幅
@@ -493,7 +500,7 @@ const refreshMinuteDataOnly = async () => {
     const data = await fetchMinuteData(stockCodes, currentDate.value)
     
     if (data) {
-      const { updatedStockList, hasUpdates } = processMinuteData(data, stockList.value)
+      const { updatedStockList, hasUpdates } = processMinuteData(data, null, stockList.value)
       
       // 只有在有更新时才触发响应式更新
       if (hasUpdates) {
