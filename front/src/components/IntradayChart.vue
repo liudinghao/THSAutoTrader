@@ -312,6 +312,55 @@ const generateSellMarkPoint = (stock, timeAxis) => {
   }
 }
 
+// 生成买入标记点配置
+const generateBuyMarkPoint = (stock, timeAxis) => {
+  if (!stock.buyPoints || stock.buyPoints.length === 0) {
+    return null
+  }
+  
+  const markPointData = stock.buyPoints.map(buyPoint => {
+    // 找到买点对应的时间索引
+    const timeIndex = timeAxis.findIndex(time => time === buyPoint.time)
+    if (timeIndex === -1) return null
+    
+    // 直接使用 buyPoint 的属性
+    const symbol = buyPoint.symbol || 'arrow'
+    const symbolRotate = buyPoint.symbolRotate || 0
+    const color = buyPoint.color || '#ff4d4f'
+    const label = buyPoint.label || '买点'
+    
+    return {
+      coord: [timeIndex, buyPoint.price],
+      value: buyPoint.price,
+      symbol: symbol,
+      symbolRotate: symbolRotate,
+      itemStyle: {
+        color: color
+      },
+      label: {
+        show: true,
+        formatter: label,
+        color: '#fff',
+        fontSize: 10,
+        fontWeight: 'bold',
+        backgroundColor: color,
+        padding: [2, 6],
+        borderRadius: 4,
+        position: 'bottom'
+      }
+    }
+  }).filter(item => item !== null)
+  
+  if (markPointData.length === 0) {
+    return null
+  }
+  
+  return {
+    symbolSize: 12,
+    data: markPointData
+  }
+}
+
 // 更新专业分时图 - 支持多股票叠加
 const updateProfessionalChart = () => {
   if (!chart.value || !props.stockData?.length) return
@@ -357,6 +406,29 @@ const updateProfessionalChart = () => {
     ]
   }
 
+  // 生成组合标记点（买入+卖出信号）
+  const generateCombinedMarkPoint = (stock, timeAxis) => {
+    const sellMarks = generateSellMarkPoint(stock, timeAxis)
+    const buyMarks = generateBuyMarkPoint(stock, timeAxis)
+    
+    const combinedData = []
+    if (sellMarks?.data) {
+      combinedData.push(...sellMarks.data)
+    }
+    if (buyMarks?.data) {
+      combinedData.push(...buyMarks.data)
+    }
+    
+    if (combinedData.length === 0) {
+      return null
+    }
+    
+    return {
+      symbolSize: 12,
+      data: combinedData
+    }
+  }
+
   // 获取自定义图例标签
   const getLegendLabel = (stock, index = 0) => {
     const key = `${stock.code}_${index}`
@@ -383,7 +455,7 @@ const updateProfessionalChart = () => {
       color: stockColors[0]
     },
     markLine: markLine,
-    markPoint: generateSellMarkPoint(stock, timeAxis)
+    markPoint: generateCombinedMarkPoint(stock, timeAxis)
   })
   
   // 主股票的均价线（不显示在图例中）

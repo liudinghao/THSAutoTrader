@@ -59,14 +59,34 @@
       <el-button type="primary" @click="addStock">添加</el-button>
     </div>
 
-    <!-- summary 展示区 -->
-    <div v-if="mainStockSummary" class="summary-info" style="margin-bottom: 10px;">
-      <el-alert
-        :title="`风险等级：${mainStockSummary.riskLevel}，卖出信号数：${mainStockSummary.sellSignals}`"
-        type="warning"
-        show-icon
-        :description="mainStockSummary.recommendations.join('；')"
-      />
+    <!-- 信号展示区 -->
+    <div class="signals-container" style="margin-bottom: 10px;">
+      <div v-if="mainStockSummary" class="summary-info" style="margin-bottom: 10px;">
+        <el-alert
+          :title="`风险等级：${mainStockSummary.riskLevel}，卖出信号数：${mainStockSummary.sellSignals}`"
+          type="warning"
+          show-icon
+          :description="mainStockSummary.recommendations.join('；')"
+        />
+      </div>
+      
+      <!-- 买入信号展示区 -->
+      <div v-if="buySummary" class="buy-signals">
+        <el-alert
+          v-if="buySummary.buySignals > 0"
+          :title="`买入信号：${buySummary.buySignals}个，风险等级：${buySummary.riskLevel}`"
+          type="success"
+          show-icon
+          :description="buySummary.recommendations.join('； ')"
+        />
+        <el-alert
+          v-else
+          title="暂无买入信号"
+          type="info"
+          show-icon
+          description="当前没有检测到明显买入信号，观望为主"
+        />
+      </div>
     </div>
 
     <!-- 图表容器 -->
@@ -163,6 +183,8 @@ import IntradayChart from '../components/IntradayChart.vue'
 import { analyzeSellPoints } from '../strategies/sellPointAnalysis'
 import { getLimitPrices } from '../utils/common'
 import { calculateStockSimilarity } from '../strategies/pearsonCorrelation'
+import { detectVolumeBreakout, scanVolumeBreakoutSignals } from '../strategies/volumeBreakoutBuy'
+import { analyzeBuyPoints, scanBuyPoints } from '../strategies/volumeBreakoutBuyOptimized'
 // ==================== 响应式数据 ====================
 const intradayChartRef = ref(null)
 const stockList = ref([]) // 股票列表
@@ -171,6 +193,9 @@ const currentDate = ref('') // 当前选择的日期
 const refreshTimer = ref(null) // 定时刷新定时器
 const isTradingTime = ref(false) // 是否在交易时间内
 const mainStockSummary = ref(null)
+const buySignals = ref([]) // 买入信号列表
+const buyPoints = ref([]) // 买入点详细数据
+const buySummary = ref(null) // 买入信号汇总
 
 // 新增股票的表单数据
 const newMarketId = ref('17') // 默认选择沪市A股
@@ -502,8 +527,15 @@ const refreshMinuteDataOnly = async () => {
     if (data) {
       const { updatedStockList, hasUpdates } = processMinuteData(data, null, stockList.value)
       
+      // 检测买入信号
+      await detectBuySignals()
+      
       // 只有在有更新时才触发响应式更新
       if (hasUpdates) {
+        // 将买入数据添加到主股票中
+        if (updatedStockList.length > 0 && buyPoints.value.length > 0) {
+          updatedStockList[0].buyPoints = buyPoints.value
+        }
         stockList.value.splice(0, stockList.value.length, ...updatedStockList)
       }
     }
@@ -552,12 +584,20 @@ const fetchMinuteDataFromApi = async () => {
       const { sellPoints, summary } = analyzeSellPoints(mainStockData, mainStock)
       mainStockSummary.value = summary
       
+      // 检测买入信号
+      await detectBuySignals()
+      
       // 处理并合并数据
       const { updatedStockList } = processMinuteData(todayData, yesterdayData, stockList.value)
       
       // 将卖点数据添加到主股票中
       if (updatedStockList.length > 0 && sellPoints.length > 0) {
         updatedStockList[0].sellPoints = sellPoints
+      }
+      
+      // 将买入数据添加到主股票中
+      if (updatedStockList.length > 0 && buyPoints.value.length > 0) {
+        updatedStockList[0].buyPoints = buyPoints.value
       }
       
       // 触发响应式更新
@@ -568,6 +608,93 @@ const fetchMinuteDataFromApi = async () => {
     ElMessage.error('获取分时数据失败')
   } finally {
     isLoading.value = false
+  }
+}
+
+// ==================== 买入信号检测 ====================
+
+/**
+ * 检测买入信号（优化版，与卖出策略格式一致）
+ */
+const detectBuySignals = async () => {
+  if (stockList.value.length === 0) {
+    buySignals.value = []
+    buyPoints.value = []
+    buySummary.value = null
+    return
+  }
+
+  try {
+    // 构建与卖出策略一致的数据格式
+    const stockDataList = stockList.value.map(stock => {
+      const stockKey = `${stock.marketId}:${stock.code}`
+      
+      // 从rawData中提取分时数据，格式与卖出策略一致
+      let rawData = {}
+      if (stock.rawData) {
+        rawData = { ...stock.rawData }
+      } else if (stock.minuteData && stock.minuteData.length > 0) {
+        // 从minuteData转换格式
+        stock.minuteData.forEach(([time, changePercent]) => {
+          rawData[time] = {
+            NEW: 0, // 价格暂时无法获取
+            VOL: 0, // 成交量暂时无法获取
+            money: 0, // 成交额暂时无法获取
+            changePercent: parseFloat(changePercent || 0),
+            preClose: stock.preClose || 0
+          }
+        })
+      }
+
+      return {
+        code: stock.code,
+        name: stock.name,
+        rawData: rawData,
+        preClose: stock.preClose,
+        limitUpPrice: stock.limitUpPrice,
+        limitDownPrice: stock.limitDownPrice,
+        changePercent: parseFloat(stock.change) || 0
+      }
+    })
+
+    console.log('开始检测买入信号，股票数据:', stockDataList)
+
+    // 使用优化版策略检测买入信号
+    const results = scanBuyPoints(stockDataList)
+    
+    if (results.length > 0) {
+      console.log('发现买入信号:', results)
+      
+      // 获取主股票的买入信号
+      const mainStock = stockDataList[0]
+      const { buyPoints: points, summary } = analyzeBuyPoints(
+        mainStock.rawData || {},
+        {
+          name: mainStock.name,
+          code: mainStock.code,
+          preClose: mainStock.preClose,
+          limitUpPrice: mainStock.limitUpPrice,
+          limitDownPrice: mainStock.limitDownPrice,
+          changePercent: mainStock.changePercent
+        }
+      )
+      
+      buyPoints.value = points
+      buySummary.value = summary
+    } else {
+      console.log('未检测到买入信号')
+      buyPoints.value = []
+      buySummary.value = {
+        riskLevel: 'low',
+        buySignals: 0,
+        recommendations: ['未检测到明显买入信号，观望为主']
+      }
+    }
+  } catch (error) {
+    console.error('检测买入信号失败:', error)
+    buySignals.value = []
+    buyPoints.value = []
+    buySummary.value = null
   }
 }
 
