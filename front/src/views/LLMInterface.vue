@@ -99,7 +99,12 @@ const MODEL_CONFIG = {
     label: 'DeepSeek-Reasoner',
     value: 'deepseek-reasoner',
     description: '用于推理和复杂问题'
-  }
+  },
+  'kimi': {
+    label: 'Kimi',
+    value: 'kimi',
+    description: '月之暗面Kimi大模型，支持联网搜索'
+  },
 }
 
 export default {
@@ -113,7 +118,7 @@ export default {
     return {
       config: {
         apiKey: '',
-        model: 'deepseek-chat',
+        model: 'kimi',
         temperature: 0.7
       },
       messages: [],

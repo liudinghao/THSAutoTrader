@@ -616,6 +616,46 @@ export function getPreTradeDate(date = null) {
     });
   });
 }
+
+/**
+ * 获取最近5个交易日日期列表
+ * @param {string} date 起始日期，格式：YYYYMMDD，如：20250719，默认为当前日期
+ * @returns {Promise<string[]>} 返回最近5个交易日日期数组的Promise，按时间倒序排列
+ */
+export function getPreviousTradeDates(date = null, count = 5) {
+  return new Promise((resolve, reject) => {
+    const targetDate = date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    const dates = [];
+    let currentDate = targetDate;
+    
+    // 递归获取前一个交易日
+    const getNextDate = async () => {
+      if (dates.length >= count) {
+        resolve(dates); // 按时间倒序排列（最新的在前）
+        return;
+      }
+      
+      try {
+        const prevDate = await getPreTradeDate(currentDate);
+        if (prevDate && prevDate !== currentDate) {
+          dates.push(prevDate);
+          currentDate = prevDate;
+          // 继续获取下一个交易日
+          setTimeout(() => getNextDate(), 50); // 添加延迟避免API调用过快
+        } else {
+          // 无法获取更多交易日，返回已获取的
+          resolve(dates);
+        }
+      } catch (error) {
+        console.error('获取交易日失败:', error);
+        reject(error);
+      }
+    };
+    
+    // 开始获取
+    getNextDate();
+  });
+}
 /**
  * 检查是否在交易时间内
  * @param {string} stockCode 股票代码，如：'300033'

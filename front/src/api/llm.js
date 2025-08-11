@@ -1,9 +1,18 @@
-// DeepSeek API配置
+// API配置
 const API_CONFIG = {
-  baseUrl: 'https://api.deepseek.com/v1/chat/completions',
-  headers: {
-    'Content-Type': 'application/json',
-    'X-API-Provider': 'deepseek',
+  deepseek: {
+    baseUrl: 'https://api.deepseek.com/v1/chat/completions',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Provider': 'deepseek',
+    },
+  },
+  kimi: {
+    baseUrl: '//api.moonshot.cn/v1/chat/completions',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Provider': 'moonshot',
+    },
   },
 };
 
@@ -14,14 +23,22 @@ const API_CONFIG = {
  * @returns {Object} 配置对象
  */
 function getConfig(apiKey, model) {
-  const savedModel =
-    model || localStorage.getItem('selected_model') || 'deepseek-chat';
+  const savedModel = model || localStorage.getItem('selected_model') || 'kimi';
   const key = `api_key_${savedModel}`;
   const savedApiKey = apiKey || localStorage.getItem(key) || '';
+
+  // 根据模型返回对应的API配置
+  let provider = 'deepseek';
+  if (savedModel === 'kimi') {
+    provider = 'kimi';
+  }
 
   return {
     apiKey: savedApiKey,
     model: savedModel,
+    provider: provider,
+    baseUrl: API_CONFIG[provider].baseUrl,
+    headers: API_CONFIG[provider].headers,
   };
 }
 
@@ -33,20 +50,22 @@ function getConfig(apiKey, model) {
  */
 export async function validateApiKey(apiKey, model) {
   const config = getConfig(apiKey, model);
+  console.log('config', config);
+  const { apiKey: actualApiKey, baseUrl, headers } = config;
 
-  if (!config.apiKey) {
-    throw new Error('请输入API密钥');
+  if (!actualApiKey) {
+    throw new Error('Please enter API key');
   }
 
   try {
-    const response = await fetch(API_CONFIG.baseUrl, {
+    const response = await fetch(baseUrl, {
       method: 'POST',
       headers: {
-        ...API_CONFIG.headers,
-        Authorization: `Bearer ${config.apiKey}`,
+        ...headers,
+        Authorization: `Bearer ${actualApiKey}`,
       },
       body: JSON.stringify({
-        model: config.model,
+        model: config.model === 'kimi' ? 'moonshot-v1-8k' : config.model,
         messages: [{ role: 'user', content: 'test' }],
         max_tokens: 5,
       }),
@@ -56,7 +75,7 @@ export async function validateApiKey(apiKey, model) {
 
     if (data.error) {
       if (data.error.code === 'invalid_api_key') {
-        throw new Error('API密钥无效，请检查后重试');
+        throw new Error('Invalid API key, please check and try again');
       }
       throw new Error(data.error.message);
     }
@@ -67,7 +86,7 @@ export async function validateApiKey(apiKey, model) {
 }
 
 /**
- * 发送消息到DeepSeek
+ * 发送消息到AI模型
  * @param {string} apiKey - API密钥
  * @param {string} model - 模型名称
  * @param {Array} messages - 消息历史
@@ -76,23 +95,60 @@ export async function validateApiKey(apiKey, model) {
  */
 export async function sendMessage(apiKey, model, messages, temperature) {
   const config = getConfig(apiKey, model);
+  const actualApiKey = config.apiKey;
+  const baseUrl = config.baseUrl;
+  const headers = config.headers;
 
-  if (!config.apiKey) {
-    throw new Error('请输入API密钥');
+  if (!actualApiKey) {
+    throw new Error('Please enter API key');
   }
 
   try {
-    const response = await fetch(API_CONFIG.baseUrl, {
-      method: 'POST',
-      headers: {
-        ...API_CONFIG.headers,
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
+    let requestBody = {};
+
+    if (config.provider === 'kimi') {
+      // Kimi 模型配置，支持联网搜索
+      requestBody = {
+        model: 'moonshot-v1-8k',
+        messages,
+        temperature,
+        tools: [
+          {
+            type: 'function',
+            function: {
+              name: 'web_search',
+              description: 'Search the web for current information',
+              parameters: {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'The search query',
+                  },
+                },
+                required: ['query'],
+              },
+            },
+          },
+        ],
+        tool_choice: 'auto',
+      };
+    } else {
+      // DeepSeek 模型配置
+      requestBody = {
         model: config.model,
         messages,
         temperature,
-      }),
+      };
+    }
+
+    const response = await fetch(baseUrl, {
+      method: 'POST',
+      headers: {
+        ...headers,
+        Authorization: `Bearer ${actualApiKey}`,
+      },
+      body: JSON.stringify(requestBody),
     });
 
     const data = await response.json();
@@ -102,7 +158,7 @@ export async function sendMessage(apiKey, model, messages, temperature) {
     }
 
     if (!data.choices || !data.choices[0]) {
-      throw new Error('请求失败');
+      throw new Error('Request failed');
     }
 
     return data.choices[0].message;

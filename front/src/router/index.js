@@ -7,6 +7,7 @@ import {
   Refresh,
   Money,
   Histogram,
+  Link,
 } from '@element-plus/icons-vue';
 
 const routes = [
@@ -91,6 +92,16 @@ const routes = [
     meta: {
       title: '数据更新',
       icon: Refresh,
+      showInNav: true,
+    },
+  },
+  {
+    path: '/websocket-connection',
+    name: 'WebSocketConnection',
+    component: () => import('../views/WebSocketConnection.vue'),
+    meta: {
+      title: 'WebSocket连接',
+      icon: Link,
       showInNav: true,
     },
   },

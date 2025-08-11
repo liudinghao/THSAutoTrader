@@ -1,4 +1,14 @@
 {
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:platform.moonshot.cn)",
+      "Bash(npm install:*)",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Bash(awk:*)"
+    ],
+    "deny": []
+  },
   "model": "claude-sonnet-4",
   "systemPrompt": "你是从事此项目的高级开发人员",
   "allowedTools": [
@@ -6,11 +16,5 @@
     "View",
     "Bash(git:)",
     "Bash(npm:*)"
-  ],
-  "permissions": {
-    "allow": [
-      "Bash(grep:*)"
-    ],
-    "deny": []
-  }
+  ]
 }
