@@ -13,6 +13,14 @@ export default defineConfig({
   server: {
     port: 3000,
     open: true,
+    proxy: {
+      '/api/market': {
+        target: 'https://zx.10jqka.com.cn',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/market/, '/marketinfo'),
+        secure: false,
+      },
+    },
   },
   build: {
     outDir: '../html',

@@ -38,7 +38,7 @@ const TRADING_RULES = {
   unit: '1手=100股',
   t1Rule: 'T+1交易制度（当日买入次日可卖）',
   minQuantity: '必须是100股整数倍',
-  riskControl: '设置止损位和分批止盈'
+  riskControl: '设置止损位和分批止盈',
 };
 
 /**
@@ -119,6 +119,7 @@ export async function getIntradayData(stockCode) {
  * @param {number} recentMinutes 最近分钟数，默认30分钟
  * @param {Object} positionInfo 持仓信息，包含是否持仓、成本价、盈亏等
  * @param {string} availableBalance 可用金额
+ * @param {Object} marketData 市场概况数据 {limit_up, limit_down, rising, falling}
  * @returns {string} 分析提示文本
  */
 export function buildStockAnalysisPrompt(
@@ -129,26 +130,73 @@ export function buildStockAnalysisPrompt(
   recentDays = 30,
   recentMinutes = 30,
   positionInfo = null,
-  availableBalance = "0.00"
+  availableBalance = '0.00',
+  marketData = null,
+  stockConcepts = [],
+  marketConcepts = {topRisers: [], topFallers: []}
 ) {
-  let prompt = "";
+  let prompt = '';
+
+  // 构建市场概况信息
+  let marketInfo = '';
+  if (marketData) {
+    const totalStocks =
+      marketData.rising +
+      marketData.falling +
+      marketData.limit_up +
+      marketData.limit_down;
+    const limitUpRatio = ((marketData.limit_up / totalStocks) * 100).toFixed(2);
+    const limitDownRatio = (
+      (marketData.limit_down / totalStocks) *
+      100
+    ).toFixed(2);
+    const risingRatio = ((marketData.rising / totalStocks) * 100).toFixed(2);
+    const fallingRatio = ((marketData.falling / totalStocks) * 100).toFixed(2);
+
+    marketInfo = `
+【市场概况】
+- 涨停数量：${marketData.limit_up}只 (${limitUpRatio}%)
+- 跌停数量：${marketData.limit_down}只 (${limitDownRatio}%)
+- 上涨股票：${marketData.rising}只 (${risingRatio}%)
+- 下跌股票：${marketData.falling}只 (${fallingRatio}%)
+`;
+  }
+
+  // 概念信息
+  let conceptsInfo = '';
+  if (stockConcepts && stockConcepts.length > 0) {
+    conceptsInfo += `
+【所属概念】
+${formatConceptsToString(stockConcepts)}
+`;
+  }
+
+  // 市场概念排行信息
+  let marketConceptsInfo = '';
+  if (marketConcepts && (marketConcepts.topRisers.length > 0 || marketConcepts.topFallers.length > 0)) {
+    marketConceptsInfo += formatConceptRankingInfo(marketConcepts.topRisers, marketConcepts.topFallers);
+  }
 
   if (positionInfo && positionInfo.isInPosition) {
     const isT1Locked =
       positionInfo.availableQuantity === 0 ||
-      positionInfo.availableQuantity === "0";
+      positionInfo.availableQuantity === '0';
     const t1Status = isT1Locked
-      ? "⚠️ 今日买入（T+1锁定，不可卖出）"
-      : "✅ 可正常交易";
+      ? '⚠️ 今日买入（T+1锁定，不可卖出）'
+      : '✅ 可正常交易';
 
-    prompt = `【股票分析数据】
+    prompt = `【股票分析数据】${marketInfo}${conceptsInfo}${marketConceptsInfo}
 
 【持仓信息】
 - 证券代码：${stockCode}
 - 证券名称：${stockName}
 - 持仓成本价：${positionInfo.costPrice}元
-- 持仓数量：${positionInfo.quantity}股（${parseInt(positionInfo.quantity) / 100}手）
-- 可用数量：${positionInfo.availableQuantity}股（${parseInt(positionInfo.availableQuantity) / 100}手） ${t1Status}
+- 实际数量：${positionInfo.totalQuantity}股（${
+      parseInt(positionInfo.totalQuantity) / 100
+    }手）
+- 可用数量：${positionInfo.availableQuantity}股（${
+      parseInt(positionInfo.availableQuantity) / 100
+    }手） ${t1Status}
 - 当前市值：${positionInfo.marketValue}元
 - 持仓盈亏：${positionInfo.profit}元
 - 盈亏比例：${positionInfo.profitPercent}%
@@ -156,33 +204,78 @@ export function buildStockAnalysisPrompt(
 - 可用资金：${availableBalance}元
 
 【交易状态】
-${isT1Locked ? "⚠️ T+1锁定 - 仅可分析明日策略" : "✅ 当前可交易"}
+${isT1Locked ? '⚠️ T+1锁定 - 仅可分析明日策略' : '✅ 当前可交易'}
+
+【市场影响】
+${
+  marketData
+    ? `当前市场整体${
+        marketData.rising > marketData.falling * 2
+          ? '强势，可考虑加仓或持有'
+          : marketData.falling > marketData.rising * 2
+          ? '弱势，需谨慎操作'
+          : '平衡，建议谨慎观望'
+      }`
+    : ''
+}
 
 【分析要求】
-基于持仓数据提供：
+基于持仓数据、所属概念和市场环境提供：
 1. 当前盈亏状态分析：${positionInfo.profit}元 (${positionInfo.profitPercent}%)
-2. 操作决策（继续持有/减仓/加仓）
-3. 具体交易点位建议（以手为单位）
-4. 止损位和目标价位
-5. ${isT1Locked ? "明日" : "今日"}具体操作策略
+2. 所属概念板块的市场表现及影响分析
+3. 操作决策（继续持有/减仓/加仓），考虑所属概念板块走势
+4. 具体交易点位建议（以手为单位）
+5. 止损位和目标价位
+6. ${isT1Locked ? '明日' : '今日'}具体操作策略，结合所属概念板块情绪
 
 近期日线数据（最近6个月）：`;
   } else {
-    prompt = `【股票分析数据】
+    prompt = `【股票分析数据】${marketInfo}${conceptsInfo}${marketConceptsInfo}
 
 【基本信息】
 - 证券代码：${stockCode}
 - 证券名称：${stockName}
 - 可用资金：${availableBalance}元
 
+【所属概念】
+${stockConcepts && stockConcepts.length > 0 ? formatConceptsToString(stockConcepts) : '暂无概念信息'}
+
+【市场环境】
+${
+  marketData
+    ? `当前市场${
+        marketData.rising > marketData.falling * 2
+          ? '强势，可考虑积极建仓'
+          : marketData.falling > marketData.rising * 2
+          ? '弱势，建议谨慎观望'
+          : '平衡，可适度参与'
+      }
+- 涨停家数：${marketData.limit_up}只，显示市场热度${
+        marketData.limit_up > 100
+          ? '较高'
+          : marketData.limit_up > 50
+          ? '适中'
+          : '较低'
+      }
+- 跌停家数：${marketData.limit_down}只，显示市场风险${
+        marketData.limit_down > 20
+          ? '较高'
+          : marketData.limit_down > 10
+          ? '适中'
+          : '较低'
+      }`
+    : ''
+}
+
 【分析要求】
-基于当前数据提供：
-1. 当前价位是否适合建仓
-2. 建议买入股数（手数）
-3. 买入金额和仓位比例
-4. 止损位设置
-5. 目标价位和止盈策略
-6. 今日具体操作点位建议
+基于当前数据、所属概念和市场环境提供：
+1. 当前价位是否适合建仓，考虑所属概念板块表现
+2. 所属概念板块的市场热度及对该股的影响
+3. 建议买入股数（手数），结合所属概念板块走势
+4. 买入金额和仓位比例
+5. 止损位设置，考虑所属概念板块风险
+6. 目标价位和止盈策略
+7. 今日具体操作点位建议，结合所属概念板块情绪
 
 近期日线数据（最近6个月）：`;
   }
@@ -192,25 +285,29 @@ ${isT1Locked ? "⚠️ T+1锁定 - 仅可分析明日策略" : "✅ 当前可交
     const dailyData = dailyKData[stockCode];
     const dates = Object.keys(dailyData).sort().slice(-recentDays);
 
-    prompt += "日期\t\t开盘价\t收盘价\t昨收价\t成交量\t成交额\n";
+    prompt += '日期\t\t开盘价\t收盘价\t昨收价\t成交量\t成交额\n';
     dates.forEach((date) => {
       const day = dailyData[date];
-      prompt += `${date}\t${day.OPEN || "N/A"}\t${day.CLOSE || "N/A"}\t${day.PRE || "N/A"}\t${day.VOL || "N/A"}\t${day.money || "N/A"}\n`;
+      prompt += `${date}\t${day.OPEN || 'N/A'}\t${day.CLOSE || 'N/A'}\t${
+        day.PRE || 'N/A'
+      }\t${day.VOL || 'N/A'}\t${day.money || 'N/A'}\n`;
     });
   } else {
-    prompt += "(日线数据获取失败)\n";
+    prompt += '(日线数据获取失败)\n';
   }
 
   // 添加分时数据
-  prompt += "\n今日分时数据：\n";
+  prompt += '\n今日分时数据：\n';
   if (minuteData && minuteData[stockCode]) {
     const minuteEntries = Object.entries(minuteData[stockCode]);
-    prompt += "时间\t\t价格\t成交量\t成交额\t涨跌幅\n";
+    prompt += '时间\t\t价格\t成交量\t成交额\t涨跌幅\n';
     minuteEntries.forEach(([time, data]) => {
-      prompt += `${time}\t${data.NEW || data.JUNJIA || "N/A"}\t${data.VOL || "N/A"}\t${data.money || "N/A"}\t${data.changePercent || "N/A"}%\n`;
+      prompt += `${time}\t${data.NEW || data.JUNJIA || 'N/A'}\t${
+        data.VOL || 'N/A'
+      }\t${data.money || 'N/A'}\t${data.changePercent || 'N/A'}%\n`;
     });
   } else {
-    prompt += "(分时数据获取失败)\n";
+    prompt += '(分时数据获取失败)\n';
   }
 
   prompt += `
@@ -227,21 +324,25 @@ ${isT1Locked ? "⚠️ T+1锁定 - 仅可分析明日策略" : "✅ 当前可交
  * @param {string} stockName 股票名称
  * @param {Object} options 分析选项
  * @param {Object} positionData 持仓数据数组
+ * @param {Object} marketData 市场概况数据 {limit_up, limit_down, rising, falling}
  * @returns {Promise<Object>} 分析结果
  */
 export async function performStockAnalysis(
   stockCode,
   stockName,
   options = {},
-  positionData = []
+  positionData = [],
+  marketData = null,
+  marketConcepts = {topRisers: [], topFallers: []}
 ) {
   const { months = 6, recentDays = 30, recentMinutes = 30 } = options;
 
   try {
     // 获取数据
-    const [dailyKData, minuteData] = await Promise.all([
+    const [dailyKData, minuteData, stockConcepts] = await Promise.all([
       getHistoricalKLineData(stockCode, months),
       getIntradayData(stockCode),
+      getStockConcepts(stockCode),
     ]);
 
     // 检查是否持仓
@@ -270,7 +371,10 @@ export async function performStockAnalysis(
       recentDays,
       recentMinutes,
       positionInfo,
-      availableBalance
+      availableBalance,
+      marketData,
+      stockConcepts,
+      marketConcepts
     );
 
     // 调用AI分析（使用system prompt）
@@ -279,7 +383,7 @@ export async function performStockAnalysis(
       DEEPSEEK_MODEL,
       [
         { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: analysisPrompt }
+        { role: 'user', content: analysisPrompt },
       ],
       0.7
     );
@@ -380,14 +484,13 @@ export function checkStockPosition(stockCode, positionData = []) {
   if (position) {
     return {
       isInPosition: true,
-      costPrice: position.成本价 || position.costPrice || 'N/A',
-      profit: position.盈亏 || position.profit || 'N/A',
-      profitPercent: position['盈亏比例(%)'] || position.profitPercent || 'N/A',
-      quantity: position.股票余额 || position.quantity || 'N/A',
-      marketValue: position.市值 || position.marketValue || 'N/A',
-      availableQuantity:
-        position.可用余额 || position.availableQuantity || 'N/A',
-      positionRatio: position['仓位占比(%)'] || position.positionRatio || 'N/A',
+      costPrice: position.成本价,
+      profit: position.盈亏,
+      profitPercent: position['盈亏比例(%)'],
+      totalQuantity: position.实际数量,
+      availableQuantity: position.可用余额,
+      marketValue: position.市值,
+      positionRatio: position['仓位占比(%)'],
     };
   }
 
@@ -409,4 +512,65 @@ export function getMarketId(stockCode) {
   if (code.startsWith('3')) return '33'; // 创业板
 
   return '33';
+}
+
+/**
+ * 获取股票所属概念信息
+ * @param {string} stockCode 股票代码
+ * @returns {Promise<Array>} 概念信息数组
+ */
+export async function getStockConcepts(stockCode) {
+  try {
+    const response = await axios.get(
+      `https://www.wttiao.com/moni/concepts/getConceptsByStock?stockCode=${stockCode}`
+    );
+    
+    if (response.data && response.data.code === 0 && Array.isArray(response.data.data)) {
+      return response.data.data;
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('获取股票概念信息失败:', error);
+    return [];
+  }
+}
+
+/**
+ * 格式化概念信息为字符串
+ * @param {Array} concepts 概念数组
+ * @returns {string} 格式化后的概念信息
+ */
+export function formatConceptsToString(concepts) {
+  if (!concepts || concepts.length === 0) {
+    return '暂无概念信息';
+  }
+  
+  return concepts.map(concept => concept.conceptName).join('、');
+}
+
+/**
+ * 格式化概念排行信息
+ * @param {Array} topRisers 涨幅前十概念
+ * @param {Array} topFallers 跌幅前十概念
+ * @returns {string} 格式化后的概念排行信息
+ */
+export function formatConceptRankingInfo(topRisers, topFallers) {
+  let info = '';
+  
+  if (topRisers && topRisers.length > 0) {
+    info += '\n【涨幅前十概念】\n';
+    topRisers.forEach((concept, index) => {
+      info += `${index + 1}. ${concept.name} (${concept.changePercent}%)\n`;
+    });
+  }
+  
+  if (topFallers && topFallers.length > 0) {
+    info += '\n【跌幅前十概念】\n';
+    topFallers.forEach((concept, index) => {
+      info += `${index + 1}. ${concept.name} (${concept.changePercent}%)\n`;
+    });
+  }
+  
+  return info;
 }

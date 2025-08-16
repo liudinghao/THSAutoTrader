@@ -20,6 +20,97 @@
         </div>
       </template>
 
+      <!-- 市场统计 -->
+      <div class="market-stats">
+        <div class="stats-header">
+          <span>市场概况</span>
+          <div>
+            <el-tooltip 
+              content="每3分钟自动更新一次"
+              placement="top"
+            >
+              <el-tag 
+                size="small" 
+                type="info"
+                effect="plain"
+                style="margin-right: 10px;"
+              >
+                <el-icon><Timer /></el-icon>
+                自动更新
+              </el-tag>
+            </el-tooltip>
+            <el-button size="small" @click="fetchMarketStats" :loading="loading.marketStats">刷新</el-button>
+          </div>
+        </div>
+        
+        <!-- 基本市场统计 -->
+        <div class="stats-grid">
+          <div class="stat-item">
+            <div class="stat-label">涨停数</div>
+            <div class="stat-value text-red">{{ marketStats.limit_up || 0 }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">跌停数</div>
+            <div class="stat-value text-green">{{ marketStats.limit_down || 0 }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">上涨数量</div>
+            <div class="stat-value text-red">{{ marketStats.rising || 0 }}</div>
+          </div>
+          <div class="stat-item">
+            <div class="stat-label">下跌数量</div>
+            <div class="stat-value text-green">{{ marketStats.falling || 0 }}</div>
+          </div>
+        </div>
+        
+        <!-- 概念排行 -->
+        <div class="concept-ranking">
+          <div class="ranking-section">
+            <div class="section-title">📈 涨幅前十概念</div>
+            <div class="loading-container" v-if="loading.marketStats && conceptRanking.topRisers.length === 0">
+              <el-icon class="is-loading"><RefreshRight /></el-icon>
+              <span>加载中...</span>
+            </div>
+            <div class="ranking-list" v-else>
+              <div 
+                v-for="(concept, index) in conceptRanking.topRisers" 
+                :key="`riser-${concept.code}`"
+                class="ranking-item"
+              >
+                <span class="rank-number">{{ index + 1 }}</span>
+                <span class="concept-name">{{ concept.name }}</span>
+                <span class="change-value text-red">+{{ concept.changePercent }}%</span>
+              </div>
+              <div v-if="conceptRanking.topRisers.length === 0 && !loading.marketStats" class="empty-data">
+                暂无数据
+              </div>
+            </div>
+          </div>
+          
+          <div class="ranking-section">
+            <div class="section-title">📉 跌幅前十概念</div>
+            <div class="loading-container" v-if="loading.marketStats && conceptRanking.topFallers.length === 0">
+              <el-icon class="is-loading"><RefreshRight /></el-icon>
+              <span>加载中...</span>
+            </div>
+            <div class="ranking-list" v-else>
+              <div 
+                v-for="(concept, index) in conceptRanking.topFallers" 
+                :key="`faller-${concept.code}`"
+                class="ranking-item"
+              >
+                <span class="rank-number">{{ index + 1 }}</span>
+                <span class="concept-name">{{ concept.name }}</span>
+                <span class="change-value text-green">{{ concept.changePercent }}%</span>
+              </div>
+              <div v-if="conceptRanking.topFallers.length === 0 && !loading.marketStats" class="empty-data">
+                暂无数据
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- 监控股票列表 -->
       <div class="monitor-list">
         <div class="monitor-header">
@@ -61,7 +152,6 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="reason" label="涨停原因" width="120" />
           <el-table-column label="操作建议" width="100">
             <template #default="scope">
               <el-tooltip 
@@ -134,7 +224,7 @@
               </span>
             </template>
           </el-table-column>
-          <el-table-column prop="股票余额" label="余额" width="80" />
+          <el-table-column prop="实际数量" label="实际数量" width="80" />
           <el-table-column prop="可用余额" label="可用" width="80" />
           <el-table-column prop="成本价" label="成本价" width="80" />
           <el-table-column prop="市价" label="市价" width="80" />
@@ -220,6 +310,7 @@ import { fetchRealTimeQuote, isTradeTime, jumpToQuote } from '../utils/quoteApi.
 import { performStockAnalysis } from '../services/stockAnalysisService'
 import { saveAnalysisResult, getAnalysisResult, getAllAnalysisResults } from '../utils/indexedDB'
 import AnalysisResultDialog from '../components/AnalysisResultDialog.vue'
+import { getConceptRanking } from '../api/concept.js'
 
 // 响应式数据
 const connectionStatus = ref(false)
@@ -228,14 +319,27 @@ const loading = ref({
   position: false,
   stockPool: false,
   analysis: false,
-  balance: false
+  balance: false,
+  marketStats: false
 })
 const analysisResults = ref({})
 const analysisDialogVisible = ref(false)
 const currentAnalysisData = ref({})
 const availableBalance = ref('0.00')
+const marketStats = ref({
+  limit_up: 0,
+  limit_down: 0,
+  rising: 0,
+  falling: 0
+})
+const conceptRanking = ref({
+  topRisers: [],
+  topFallers: [],
+  timestamp: null
+})
 let healthCheckInterval = null
 let stockQuoteInterval = null
+let marketStatsInterval = null
 let quoteSessionId = null
 
 
@@ -257,7 +361,7 @@ const positionData = ref([])
 // 方法
 
 // 跳转到股票分时图
-const jumpToStockQuote = (stockCode) => {
+const jumpToStockQuote = async (stockCode) => {
   if (!stockCode) {
     ElMessage.warning('股票代码无效')
     return
@@ -365,18 +469,17 @@ const fetchStockPool = async () => {
   
   loading.value.stockPool = true
   try {
-    const response = await axios.get('https://www.wttiao.com/moni/ztpool/dragonCallback')
+    const response = await axios.get('https://www.wttiao.com/moni/ztpool/stock-pick')
     
     // 假设API返回的数据结构为 { data: [...] } 或 数组格式
-    const stockData = response.data.data || response.data
+    const stockData = response.data.data
     
     if (Array.isArray(stockData)) {
       monitorStocks.value = stockData.map(stock => ({
         code: stock.code,
         name: stock.name,
-        price: '0.00',
-        changePercent: '0.00',
-        reason: stock.reason_type
+        price: '--',
+        changePercent: '--'
       }))
       
       // 初始化完成后立即获取一次实时数据
@@ -501,12 +604,12 @@ const analyzeStock = async (stock) => {
   ElMessage.info(`正在分析 ${stockName || stockCode}...`)
   
   try {
-    // 使用股票分析服务，传入持仓数据
+    // 使用股票分析服务，传入持仓数据、市场数据和概念排行信息
     const result = await performStockAnalysis(stockCode, stockName, {
       months: 6,
       recentDays: 30,
       recentMinutes: 30
-    }, positionData.value)
+    }, positionData.value, marketStats.value, conceptRanking.value)
 
     if (result.success) {
       // 保存分析结果到本地存储
@@ -604,6 +707,96 @@ const loadAnalysisResults = async () => {
   }
 }
 
+// 获取市场统计数据
+const fetchMarketStats = async () => {
+  if (loading.value.marketStats) return
+  
+  loading.value.marketStats = true
+  try {
+    // 并行获取市场统计和概念排行数据
+    const [marketResponse, conceptResponse] = await Promise.allSettled([
+      (async () => {
+        const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        return await axios.get(`/api/market/overview/distribution/v3?date=${today}`);
+      })(),
+      getConceptRanking()
+    ]);
+
+    // 处理市场统计数据
+    if (marketResponse.status === 'fulfilled' && marketResponse.value.data && marketResponse.value.data.result) {
+      const result = marketResponse.value.data.result;
+      
+      // 计算上涨和下跌数量
+      let rising = 0;
+      let falling = 0;
+      
+      if (result.distribution && Array.isArray(result.distribution)) {
+        // 上涨数量：索引0-30的和（涨幅大于0的股票）
+        for (let i = 0; i < 31; i++) {
+          if (result.distribution[i]) {
+            rising += result.distribution[i];
+          }
+        }
+        
+        // 下跌数量：索引32及以后的和（跌幅大于0的股票）
+        for (let i = 32; i < result.distribution.length; i++) {
+          if (result.distribution[i]) {
+            falling += result.distribution[i];
+          }
+        }
+      }
+      
+      marketStats.value = {
+        limit_up: result.limit_up || 0,
+        limit_down: result.limit_down || 0,
+        rising: rising,
+        falling: falling
+      };
+      
+      console.log('市场统计数据更新成功:', marketStats.value);
+    }
+
+    // 处理概念排行数据
+    if (conceptResponse.status === 'fulfilled') {
+      conceptRanking.value = conceptResponse.value;
+      console.log('概念排行数据更新成功:', conceptRanking.value);
+    } else {
+      console.error('获取概念排行数据失败:', conceptResponse.reason);
+    }
+
+    ElMessage.success('市场数据更新成功');
+  } catch (error) {
+    console.error('获取市场统计数据失败:', error);
+    ElMessage.error(`获取市场统计数据失败: ${error.message}`);
+  } finally {
+    loading.value.marketStats = false;
+  }
+}
+
+// 启动市场概况定时更新（3分钟）
+const startMarketStatsInterval = () => {
+  stopMarketStatsInterval() // 先清理现有定时器
+  
+  // 立即执行一次
+  fetchMarketStats()
+  
+  // 设置3分钟（180000毫秒）定时更新
+  marketStatsInterval = setInterval(() => {
+    fetchMarketStats()
+  }, 180000)
+  
+  console.log('启动市场概况3分钟定时更新')
+}
+
+// 停止市场概况定时更新
+const stopMarketStatsInterval = () => {
+  if (marketStatsInterval) {
+    clearInterval(marketStatsInterval)
+    marketStatsInterval = null
+    console.log('停止市场概况定时更新')
+  }
+}
+
 // 停止实时行情轮询
 const stopRealTimeQuotePolling = () => {
   if (stockQuoteInterval) {
@@ -628,6 +821,10 @@ onMounted(async () => {
   // 先加载已保存的分析结果（确保数据先行）
   await loadAnalysisResults()
   
+  // 获取市场统计数据并启动3分钟定时更新
+  await fetchMarketStats()
+  startMarketStatsInterval()
+  
   // 获取股票池数据
   await fetchStockPool()
   
@@ -651,6 +848,9 @@ onUnmounted(() => {
     clearInterval(healthCheckInterval)
   }
   
+  // 停止市场概况定时更新
+  stopMarketStatsInterval()
+  
   // 停止实时行情轮询
   stopRealTimeQuotePolling()
 })
@@ -658,11 +858,11 @@ onUnmounted(() => {
 
 <style scoped>
 .trading-monkey {
-  padding: 20px;
+  padding: 10px;
 }
 
 .trading-card {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .card-header {
@@ -681,13 +881,145 @@ onUnmounted(() => {
   height: 100%;
 }
 
+.market-stats {
+  margin-bottom: 10px;
+  padding: 10px;
+  background: #f8f9fa;
+  border-radius: 4px;
+}
+
+.stats-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.stat-item {
+  text-align: center;
+  padding: 6px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.stat-label {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 2px;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.concept-ranking {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ranking-section {
+  background: white;
+  border-radius: 4px;
+  padding: 8px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.section-title {
+  font-size: 12px;
+  font-weight: bold;
+  margin-bottom: 4px;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 2px;
+}
+
+.ranking-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.ranking-item {
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 11px;
+}
+
+.ranking-item:last-child {
+  border-bottom: none;
+}
+
+.rank-number {
+  width: 20px;
+  text-align: center;
+  font-weight: bold;
+  color: #666;
+}
+
+.concept-name {
+  flex: 1;
+  margin-left: 8px;
+  color: #333;
+  font-weight: 500;
+}
+
+.change-value {
+  font-weight: bold;
+  min-width: 50px;
+  text-align: right;
+}
+
+.empty-data {
+  text-align: center;
+  color: #999;
+  padding: 20px;
+  font-size: 12px;
+}
+
+.loading-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  color: #666;
+  font-size: 12px;
+}
+
+.loading-container .el-icon {
+  margin-right: 8px;
+}
+
+@media (max-width: 768px) {
+  .concept-ranking {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
 .monitor-list,
 .position-stocks {
-  margin-bottom: 20px;
+  margin-bottom: 10px;
 }
 
 .monitor-list {
-  height: 450px;
+  height: 380px;
   overflow: hidden;
 }
 
@@ -696,8 +1028,9 @@ onUnmounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   font-weight: bold;
+  font-size: 14px;
 }
 
 .text-success {
