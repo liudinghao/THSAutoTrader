@@ -1,5 +1,6 @@
 import tkinter as tk
 from src.view.automation_view import AutomationView
+from src.view.system_tray import SystemTray
 from src.controller.automation_controller import AutomationController
 from src.service.flask_service import FlaskApp
 from src.util.logger import Logger
@@ -9,16 +10,53 @@ class AutomationApp:
         self.root = root
         self.logger = Logger()
         self.controller = AutomationController()
+        
+        # 初始化系统托盘
+        self.system_tray = SystemTray(self.root, self)
+        
         # 初始化app视图
         self.view = self._init_view()
+        
         # 初始化http服务
         self.flask_server = self.init_http_server()
+        
+        # 设置窗口关闭事件处理
+        self.root.protocol("WM_DELETE_WINDOW", self.on_window_close)
 
     def _init_view(self):
         """初始化app视图"""
         view = AutomationView(self.root, controller=self.controller)
         view.pack(fill=tk.BOTH, expand=True)
+        
+        # 将应用实例引用传递给窗口，以便访问托盘功能
+        self.root.app_instance = self
+        
         return view
+
+    def on_window_close(self):
+        """处理窗口关闭事件 - 最小化到托盘而不是退出"""
+        try:
+            self.system_tray.hide_to_tray()
+        except Exception as e:
+            self.logger.add_log(f"最小化到托盘失败: {str(e)}")
+            # 如果托盘失败，则正常退出
+            self.quit_application()
+
+    def quit_application(self):
+        """真正退出应用程序"""
+        try:
+            self.logger.add_log("正在退出应用程序...")
+            
+            # 停止托盘
+            if self.system_tray:
+                self.system_tray.stop_tray()
+            
+            # 退出主循环
+            self.root.quit()
+            self.root.destroy()
+            
+        except Exception as e:
+            self.logger.add_log(f"退出程序失败: {str(e)}")
 
     def start(self):
         """启动应用程序"""
