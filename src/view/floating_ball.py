@@ -48,9 +48,9 @@ class FloatingBall:
         )
         canvas.pack()
         
-        # 绘制小球（按比例放大）- 红色风格
-        canvas.create_oval(10, 10, 90, 90, fill='#E74C3C', outline='#C0392B', width=3)
-        canvas.create_text(50, 50, text="财", fill="white", font=("Arial", 14, "bold"))
+        # 绘制科技感渐变小球
+        self._draw_gradient_ball(canvas)
+        canvas.create_text(50, 50, text="交易", fill="white", font=("Arial", 14, "bold"))
         
         # 设置鼠标样式和绑定事件
         canvas.configure(cursor="hand2")  # 设置手指样式
@@ -62,6 +62,64 @@ class FloatingBall:
         
         # 保存canvas引用
         self.canvas = canvas
+        
+    def _draw_gradient_ball(self, canvas):
+        """绘制科技感渐变小球"""
+        import math
+        
+        # 渐变色配置 - 从亮蓝到深红的科技感配色
+        gradient_colors = [
+            '#00D4FF',  # 亮青色（外层）
+            '#0099CC',  # 蓝色
+            '#0066AA',  # 深蓝
+            '#1E3A8A',  # 靛蓝
+            '#7C3AED',  # 紫色
+            '#C026D3',  # 品红
+            '#E11D48',  # 深红
+            '#DC2626',  # 红色（核心）
+        ]
+        
+        # 计算每一层的半径和位置
+        center_x, center_y = 50, 50
+        max_radius = 40
+        layers = len(gradient_colors)
+        
+        # 从外到内绘制渐变层
+        for i, color in enumerate(gradient_colors):
+            # 计算当前层的半径（从大到小）
+            radius_ratio = (layers - i) / layers
+            current_radius = max_radius * radius_ratio
+            
+            # 计算圆形坐标
+            x1 = center_x - current_radius
+            y1 = center_y - current_radius
+            x2 = center_x + current_radius
+            y2 = center_y + current_radius
+            
+            # 绘制当前层
+            canvas.create_oval(x1, y1, x2, y2, fill=color, outline='', width=0)
+        
+        # 添加高光效果（左上角）
+        highlight_radius = 15
+        highlight_x = center_x - 12
+        highlight_y = center_y - 12
+        canvas.create_oval(
+            highlight_x - highlight_radius, 
+            highlight_y - highlight_radius,
+            highlight_x + highlight_radius, 
+            highlight_y + highlight_radius,
+            fill='#FFFFFF', outline='', width=0, stipple='gray25'
+        )
+        
+        # 添加外层发光边框
+        glow_colors = ['#00D4FF', '#0099CC', '#0066AA']
+        for i, glow_color in enumerate(glow_colors):
+            glow_radius = max_radius + 2 + i * 2
+            canvas.create_oval(
+                center_x - glow_radius, center_y - glow_radius,
+                center_x + glow_radius, center_y + glow_radius,
+                fill='', outline=glow_color, width=1
+            )
         
     def on_ball_click(self, event):
         """处理小球点击事件 - 记录初始状态"""

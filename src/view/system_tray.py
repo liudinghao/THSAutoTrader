@@ -13,21 +13,68 @@ class SystemTray:
         self.is_tray_running = False
         
     def create_tray_icon(self):
-        """创建托盘图标"""
-        # 创建一个简单的红色圆形图标
-        image = Image.new('RGBA', (64, 64), (0, 0, 0, 0))
+        """创建科技感渐变托盘图标"""
+        from PIL import ImageDraw, ImageFilter
+        import numpy as np
+        
+        # 创建高分辨率图标
+        size = 64
+        image = Image.new('RGBA', (size, size), (0, 0, 0, 0))
         draw = ImageDraw.Draw(image)
         
-        # 绘制红色圆形
-        draw.ellipse([8, 8, 56, 56], fill='#E74C3C', outline='#C0392B', width=3)
+        # 科技感渐变色（与悬浮小球一致）
+        gradient_colors = [
+            (0, 212, 255),    # 亮青色
+            (0, 153, 204),    # 蓝色
+            (0, 102, 170),    # 深蓝
+            (30, 58, 138),    # 靛蓝
+            (124, 58, 237),   # 紫色
+            (192, 38, 211),   # 品红
+            (225, 29, 72),    # 深红
+            (220, 38, 38),    # 红色（核心）
+        ]
+        
+        # 绘制渐变圆形
+        center = size // 2
+        max_radius = size // 2 - 4
+        layers = len(gradient_colors)
+        
+        for i, color in enumerate(gradient_colors):
+            # 计算当前层半径
+            radius_ratio = (layers - i) / layers
+            current_radius = int(max_radius * radius_ratio)
+            
+            # 绘制圆形
+            left = center - current_radius
+            top = center - current_radius
+            right = center + current_radius
+            bottom = center + current_radius
+            
+            draw.ellipse([left, top, right, bottom], fill=color)
+        
+        # 添加高光效果
+        highlight_radius = 8
+        highlight_x = center - 6
+        highlight_y = center - 6
+        draw.ellipse([
+            highlight_x - highlight_radius, 
+            highlight_y - highlight_radius,
+            highlight_x + highlight_radius, 
+            highlight_y + highlight_radius
+        ], fill=(255, 255, 255, 100))
         
         # 添加文字
         try:
-            # 尝试使用默认字体
-            draw.text((32, 32), "财", fill='white', anchor='mm')
+            # 使用默认字体绘制文字
+            text_bbox = draw.textbbox((0, 0), "交易")
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+            text_x = (size - text_width) // 2
+            text_y = (size - text_height) // 2
+            draw.text((text_x, text_y), "交易", fill='white')
         except:
-            # 如果字体有问题，使用简单标记
-            draw.text((28, 25), "THS", fill='white')
+            # 备用方案
+            draw.text((center - 12, center - 8), "THS", fill='white')
         
         return image
     
