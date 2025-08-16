@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk
 from tkinterweb import HtmlFrame
 from src.util.logger import Logger
+from src.view.floating_ball import FloatingBall
 import threading
 
 class AutomationView(ttk.Frame):
@@ -9,6 +10,11 @@ class AutomationView(ttk.Frame):
         super().__init__(master)
         # 先初始化控制器和服务
         self.controller = controller
+        self.master = master
+        
+        # 初始化悬浮小球
+        self.floating_ball = FloatingBall(master)
+        
         self._init_components()
         self._bind_logger()
         
@@ -132,6 +138,26 @@ class AutomationView(ttk.Frame):
             text="激活窗口",
             command=activate_and_save
         ).pack(pady=5)
+        
+        # 添加悬浮按钮
+        ttk.Button(
+            self.control_panel,
+            text="悬浮",
+            command=self.minimize_to_ball
+        ).pack(pady=5)
+
+    def minimize_to_ball(self):
+        """最小化到悬浮小球"""
+        try:
+            # 显示悬浮小球
+            self.floating_ball.show()
+            
+            # 隐藏主窗口
+            self.master.withdraw()
+            
+            Logger().add_log("已切换到悬浮模式")
+        except Exception as e:
+            Logger().add_log(f"切换悬浮模式失败: {str(e)}")
 
     def get_key_command(self):
         """获取按键指令输入"""
