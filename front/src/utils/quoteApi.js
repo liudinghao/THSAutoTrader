@@ -661,7 +661,7 @@ export function getPreviousTradeDates(date = null, count = 5) {
  * @param {string} stockCode 股票代码，如：'300033'
  * @returns {Promise<boolean>} 返回是否在交易时间内的Promise
  */
-export function isTradeTime(stockCode) {
+export function isTradeTime(stockCode = '300033') {
   return new Promise((resolve, reject) => {
     window.API.use({
       method: 'Quote.isTradeTime',

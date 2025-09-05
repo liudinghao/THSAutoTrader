@@ -3,7 +3,7 @@
  * 提供股票数据获取和分析功能
  */
 
-import { fetchHistoryData, fetchMinuteData } from '../utils/quoteApi';
+import { fetchHistoryData, fetchMinuteData, isTradeTime } from '../utils/quoteApi';
 import { sendMessage } from '../api/llm';
 import axios from 'axios';
 
@@ -120,6 +120,7 @@ export async function getIntradayData(stockCode) {
  * @param {Object} positionInfo 持仓信息，包含是否持仓、成本价、盈亏等
  * @param {string} availableBalance 可用金额
  * @param {Object} marketData 市场概况数据 {limit_up, limit_down, rising, falling}
+ * @param {boolean} isTradingTime 是否在交易时间内
  * @returns {string} 分析提示文本
  */
 export function buildStockAnalysisPrompt(
@@ -133,7 +134,8 @@ export function buildStockAnalysisPrompt(
   availableBalance = '0.00',
   marketData = null,
   stockConcepts = [],
-  marketConcepts = {topRisers: [], topFallers: []}
+  marketConcepts = {topRisers: [], topFallers: []},
+  isTradingTime = false
 ) {
   let prompt = '';
 
@@ -162,6 +164,13 @@ export function buildStockAnalysisPrompt(
 `;
   }
 
+  // 添加交易时间信息
+  const tradingTimeInfo = `
+【交易时间状态】
+${isTradingTime ? '✅ 当前为盘中交易时间（9:30-11:30, 13:00-15:00）' : '⏰ 当前为非交易时间（盘前、午休或盘后）'}
+${isTradingTime ? '请提供当前操盘计划，可提示立即买入' : '请提供次日买入计划，操作建议为次日开盘策略'}
+`;
+
   // 概念信息
   let conceptsInfo = '';
   if (stockConcepts && stockConcepts.length > 0) {
@@ -185,7 +194,7 @@ ${formatConceptsToString(stockConcepts)}
       ? '⚠️ 今日买入（T+1锁定，不可卖出）'
       : '✅ 可正常交易';
 
-    prompt = `【股票分析数据】${marketInfo}${conceptsInfo}${marketConceptsInfo}
+    prompt = `【股票分析数据】${marketInfo}${tradingTimeInfo}${conceptsInfo}${marketConceptsInfo}
 
 【持仓信息】
 - 证券代码：${stockCode}
@@ -230,7 +239,7 @@ ${
 
 近期日线数据（最近6个月）：`;
   } else {
-    prompt = `【股票分析数据】${marketInfo}${conceptsInfo}${marketConceptsInfo}
+    prompt = `【股票分析数据】${marketInfo}${tradingTimeInfo}${conceptsInfo}${marketConceptsInfo}
 
 【基本信息】
 - 证券代码：${stockCode}
@@ -339,10 +348,11 @@ export async function performStockAnalysis(
 
   try {
     // 获取数据
-    const [dailyKData, minuteData, stockConcepts] = await Promise.all([
+    const [dailyKData, minuteData, stockConcepts, isTradingTime] = await Promise.all([
       getHistoricalKLineData(stockCode, months),
       getIntradayData(stockCode),
       getStockConcepts(stockCode),
+      isTradeTime().catch(() => false), // 如果API调用失败，默认非交易时间
     ]);
 
     // 检查是否持仓
@@ -374,7 +384,8 @@ export async function performStockAnalysis(
       availableBalance,
       marketData,
       stockConcepts,
-      marketConcepts
+      marketConcepts,
+      isTradingTime
     );
 
     // 调用AI分析（使用system prompt）
@@ -419,7 +430,9 @@ export async function performStockAnalysis(
 export async function batchAnalyzeStocks(
   stocks,
   options = {},
-  positionData = []
+  positionData = [],
+  marketData = null,
+  marketConcepts = {topRisers: [], topFallers: []}
 ) {
   const results = [];
 
@@ -429,7 +442,9 @@ export async function batchAnalyzeStocks(
         stock.code,
         stock.name,
         options,
-        positionData
+        positionData,
+        marketData,
+        marketConcepts
       );
       results.push(result);
     } catch (error) {

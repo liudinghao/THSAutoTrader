@@ -26,7 +26,7 @@
           <span>市场概况</span>
           <div>
             <el-tooltip 
-              content="市场统计每3分钟更新，概念排行盘中每1分钟更新"
+              content="市场统计盘中每30秒更新，概念排行盘中每1分钟更新"
               placement="top"
             >
               <el-tag 
@@ -60,6 +60,54 @@
           <div class="stat-item">
             <div class="stat-label">下跌数量</div>
             <div class="stat-value text-green">{{ marketStats.falling || 0 }}</div>
+          </div>
+        </div>
+
+        <!-- 四大指数 -->
+        <div class="index-stats">
+          <div class="index-item">
+            <div class="index-label">上证指数</div>
+            <div class="index-value">
+              <span :class="getIndexColor(marketStats.sh_index.change_percent)">
+                {{ formatIndexValue(marketStats.sh_index.price) }}
+              </span>
+              <span :class="getIndexChangeColor(marketStats.sh_index.change_percent)">
+                {{ formatIndexChange(marketStats.sh_index.change_percent) }}
+              </span>
+            </div>
+          </div>
+          <div class="index-item">
+            <div class="index-label">深证成指</div>
+            <div class="index-value">
+              <span :class="getIndexColor(marketStats.sz_index.change_percent)">
+                {{ formatIndexValue(marketStats.sz_index.price) }}
+              </span>
+              <span :class="getIndexChangeColor(marketStats.sz_index.change_percent)">
+                {{ formatIndexChange(marketStats.sz_index.change_percent) }}
+              </span>
+            </div>
+          </div>
+          <div class="index-item">
+            <div class="index-label">创业板指</div>
+            <div class="index-value">
+              <span :class="getIndexColor(marketStats.gem_index.change_percent)">
+                {{ formatIndexValue(marketStats.gem_index.price) }}
+              </span>
+              <span :class="getIndexChangeColor(marketStats.gem_index.change_percent)">
+                {{ formatIndexChange(marketStats.gem_index.change_percent) }}
+              </span>
+            </div>
+          </div>
+          <div class="index-item">
+            <div class="index-label">微盘股</div>
+            <div class="index-value">
+              <span :class="getIndexColor(marketStats.microcap_index.change_percent)">
+                {{ formatIndexValue(marketStats.microcap_index.price) }}
+              </span>
+              <span :class="getIndexChangeColor(marketStats.microcap_index.change_percent)">
+                {{ formatIndexChange(marketStats.microcap_index.change_percent) }}
+              </span>
+            </div>
           </div>
         </div>
         
@@ -198,17 +246,7 @@
       <!-- 持仓股票 -->
       <div class="position-stocks">
         <div class="position-header">
-          <span>持仓股票 (可用金额：{{ availableBalance }} 
-            <el-button 
-              size="small" 
-              type="text" 
-              @click="refreshBalance" 
-              :loading="loading.balance"
-              style="padding: 0; margin-left: 5px;"
-            >
-              刷新
-            </el-button>
-          )</span>
+          <span>持仓股票 (可用金额：{{ availableBalance }})</span>
           <el-button size="small" @click="refreshPositionData" :loading="loading.position">刷新</el-button>
         </div>
 
@@ -330,7 +368,11 @@ const marketStats = ref({
   limit_up: 0,
   limit_down: 0,
   rising: 0,
-  falling: 0
+  falling: 0,
+  sh_index: { price: 0, change: 0, change_percent: 0 },
+  sz_index: { price: 0, change: 0, change_percent: 0 },
+  gem_index: { price: 0, change: 0, change_percent: 0 },
+  microcap_index: { price: 0, change: 0, change_percent: 0 }
 })
 const conceptRanking = ref({
   topRisers: [],
@@ -459,9 +501,10 @@ const fetchPositionData = async (forceRefresh = false) => {
   }
 }
 
-// 刷新持仓数据
-const refreshPositionData = () => {
-  fetchPositionData(true)
+// 刷新持仓数据（同时获取可用余额）
+const refreshPositionData = async () => {
+  await fetchPositionData(true)
+  await fetchBalanceData()
 }
 
 // 获取股票池数据
@@ -742,11 +785,40 @@ const fetchMarketStats = async () => {
         }
       }
       
+      // 获取四大指数实时数据
+      const indexCodes = ['16:1A0001', '32:399001', '32:399006', '48:883418'];
+      let indexData = {};
+      try {
+        indexData = await fetchRealTimeQuote(indexCodes);
+      } catch (error) {
+        console.warn('获取指数数据失败:', error);
+      }
+
       marketStats.value = {
         limit_up: result.limit_up || 0,
         limit_down: result.limit_down || 0,
         rising: rising,
-        falling: falling
+        falling: falling,
+        sh_index: {
+          price: indexData['16:1A0001']?.NEW || 0,
+          change: indexData['16:1A0001']?.ZHANGDIEFU || 0,
+          change_percent: indexData['16:1A0001']?.ZHANGDIEFU || 0
+        },
+        sz_index: {
+          price: indexData['32:399001']?.NEW || 0,
+          change: indexData['32:399001']?.ZHANGDIEFU || 0,
+          change_percent: indexData['32:399001']?.ZHANGDIEFU || 0
+        },
+        gem_index: {
+          price: indexData['32:399006']?.NEW || 0,
+          change: indexData['32:399006']?.ZHANGDIEFU || 0,
+          change_percent: indexData['32:399006']?.ZHANGDIEFU || 0
+        },
+        microcap_index: {
+          price: indexData['48:883418']?.NEW || 0,
+          change: indexData['48:883418']?.ZHANGDIEFU || 0,
+          change_percent: indexData['48:883418']?.ZHANGDIEFU || 0
+        }
       };
       
       console.log('市场统计数据更新成功:', marketStats.value);
@@ -761,6 +833,32 @@ const fetchMarketStats = async () => {
   }
 }
 
+// 指数格式化工具函数
+const formatIndexValue = (value) => {
+  if (!value || value === '0') return '-'
+  return parseFloat(value).toFixed(2)
+}
+
+const formatIndexChange = (change) => {
+  if (!change || change === '0') return '0.00%'
+  const num = parseFloat(change)
+  return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`
+}
+
+const getIndexColor = (change) => {
+  const num = parseFloat(change || 0)
+  if (num > 0) return 'text-red'
+  if (num < 0) return 'text-green'
+  return ''
+}
+
+const getIndexChangeColor = (change) => {
+  const num = parseFloat(change || 0)
+  if (num > 0) return 'text-red'
+  if (num < 0) return 'text-green'
+  return 'text-gray'
+}
+
 // 独立获取概念排行数据
 const fetchConceptRanking = async () => {
   try {
@@ -772,25 +870,26 @@ const fetchConceptRanking = async () => {
   }
 }
 
-// 启动市场概况定时更新（3分钟）
+// 启动市场概况定时更新（盘中30秒，盘后不更新）
 const startMarketStatsInterval = () => {
   stopMarketStatsInterval() // 先清理现有定时器
   
   // 立即执行一次
   fetchMarketStats()
   
-  // 设置3分钟（180000毫秒）定时更新
+  // 设置30秒（30000毫秒）定时更新
   marketStatsInterval = setInterval(async () => {
     // 检查是否在交易时间，只在交易时段更新
     const isTrading = await isTradeTime('000001')
     if (isTrading) {
       fetchMarketStats()
     } else {
-      console.log('非交易时段，跳过市场统计数据更新')
+      console.log('非交易时段，停止市场统计数据更新')
+      stopMarketStatsInterval() // 盘后停止更新
     }
-  }, 180000)
+  }, 30000)
   
-  console.log('启动市场概况3分钟定时更新')
+  console.log('启动市场概况定时更新（盘中30秒）')
 }
 
 // 停止市场概况定时更新
@@ -876,7 +975,7 @@ onMounted(async () => {
   // 先加载已保存的分析结果（确保数据先行）
   await loadAnalysisResults()
   
-  // 获取市场统计数据并启动3分钟定时更新
+  // 获取市场统计数据并启动定时更新（盘中30秒）
   await fetchMarketStats()
   startMarketStatsInterval()
   
@@ -984,6 +1083,46 @@ onUnmounted(() => {
   font-weight: bold;
 }
 
+.index-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.index-item {
+  text-align: center;
+  padding: 6px 4px;
+  background: white;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+.index-label {
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 3px;
+  font-weight: 500;
+}
+
+.index-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.index-value > span:first-child {
+  font-size: 14px;
+  font-weight: bold;
+}
+
+.index-value > span:last-child {
+  font-size: 11px;
+  opacity: 0.9;
+}
+
 .concept-ranking {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1005,11 +1144,6 @@ onUnmounted(() => {
   color: #333;
   border-bottom: 1px solid #eee;
   padding-bottom: 2px;
-}
-
-.ranking-list {
-  max-height: 200px;
-  overflow-y: auto;
 }
 
 .ranking-item {
