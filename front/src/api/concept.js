@@ -80,47 +80,50 @@ export const getConceptRanking = async () => {
       {
         params: {
           platetype: 'all',
-          'client-type': 0
+          'client-type': 0,
         },
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Referer': 'https://zx.10jqka.com.cn/hotblock/'
-        },
-        timeout: 10000
+        timeout: 10000,
       }
     );
 
-    if (response.data && response.data.errorcode === 0 && response.data.result) {
+    if (
+      response.data &&
+      response.data.errorcode === 0 &&
+      response.data.result
+    ) {
       const data = response.data.result;
-      
+
       // 根据increase字段排序并提取前十
       const sortedData = [...data].sort((a, b) => b.increase - a.increase);
-      
+
       // 提取涨幅前十
-      const topRisers = sortedData.slice(0, 10).map(item => ({
+      const topRisers = sortedData.slice(0, 10).map((item) => ({
         name: item.platename,
         code: item.platecode.toString(),
-        changePercent: parseFloat(item.increase || 0).toFixed(2)
+        changePercent: parseFloat(item.increase || 0).toFixed(2),
       }));
-      
+
       // 提取跌幅前十（按涨幅排序后取最后10个并反转）
-      const topFallers = sortedData.slice(-10).reverse().map(item => ({
-        name: item.platename,
-        code: item.platecode.toString(),
-        changePercent: parseFloat(item.increase || 0).toFixed(2)
-      }));
+      const topFallers = sortedData
+        .slice(-10)
+        .reverse()
+        .map((item) => ({
+          name: item.platename,
+          code: item.platecode.toString(),
+          changePercent: parseFloat(item.increase || 0).toFixed(2),
+        }));
 
       return {
         topRisers,
         topFallers,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     } else {
       console.warn('获取概念排行数据失败，返回空数据');
       return {
         topRisers: [],
         topFallers: [],
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
       };
     }
   } catch (error) {
@@ -130,7 +133,7 @@ export const getConceptRanking = async () => {
       topRisers: [],
       topFallers: [],
       timestamp: new Date().toISOString(),
-      error: error.message
+      error: error.message,
     };
   }
 };

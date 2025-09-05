@@ -26,7 +26,7 @@
           <span>市场概况</span>
           <div>
             <el-tooltip 
-              content="每3分钟自动更新一次"
+              content="市场统计每3分钟更新，概念排行盘中每1分钟更新"
               placement="top"
             >
               <el-tag 
@@ -39,7 +39,7 @@
                 自动更新
               </el-tag>
             </el-tooltip>
-            <el-button size="small" @click="fetchMarketStats" :loading="loading.marketStats">刷新</el-button>
+            <el-button size="small" @click="refreshMarketData" :loading="loading.marketStats">刷新</el-button>
           </div>
         </div>
         
@@ -121,7 +121,7 @@
           </div>
         </div>
 
-        <el-table :data="monitorStocks" style="width: 100%" size="small" max-height="400">
+        <el-table :data="monitorStocks" style="width: 100%" size="small" max-height="450">
           <el-table-column prop="code" label="代码" width="80">
             <template #default="scope">
               <span 
@@ -340,6 +340,7 @@ const conceptRanking = ref({
 let healthCheckInterval = null
 let stockQuoteInterval = null
 let marketStatsInterval = null
+let conceptRankingInterval = null
 let quoteSessionId = null
 
 
@@ -707,24 +708,19 @@ const loadAnalysisResults = async () => {
   }
 }
 
-// 获取市场统计数据
+// 获取市场统计数据（不包括概念排行）
 const fetchMarketStats = async () => {
   if (loading.value.marketStats) return
   
   loading.value.marketStats = true
   try {
-    // 并行获取市场统计和概念排行数据
-    const [marketResponse, conceptResponse] = await Promise.allSettled([
-      (async () => {
-        const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
-        return await axios.get(`/api/market/overview/distribution/v3?date=${today}`);
-      })(),
-      getConceptRanking()
-    ]);
+    // 只获取市场基础统计数据
+    const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
+    const marketResponse = await axios.get(`/api/market/overview/distribution/v3?date=${today}`);
 
     // 处理市场统计数据
-    if (marketResponse.status === 'fulfilled' && marketResponse.value.data && marketResponse.value.data.result) {
-      const result = marketResponse.value.data.result;
+    if (marketResponse.data && marketResponse.data.result) {
+      const result = marketResponse.data.result;
       
       // 计算上涨和下跌数量
       let rising = 0;
@@ -756,20 +752,23 @@ const fetchMarketStats = async () => {
       console.log('市场统计数据更新成功:', marketStats.value);
     }
 
-    // 处理概念排行数据
-    if (conceptResponse.status === 'fulfilled') {
-      conceptRanking.value = conceptResponse.value;
-      console.log('概念排行数据更新成功:', conceptRanking.value);
-    } else {
-      console.error('获取概念排行数据失败:', conceptResponse.reason);
-    }
-
-    ElMessage.success('市场数据更新成功');
+    ElMessage.success('市场统计数据更新成功');
   } catch (error) {
     console.error('获取市场统计数据失败:', error);
     ElMessage.error(`获取市场统计数据失败: ${error.message}`);
   } finally {
     loading.value.marketStats = false;
+  }
+}
+
+// 独立获取概念排行数据
+const fetchConceptRanking = async () => {
+  try {
+    const conceptResponse = await getConceptRanking();
+    conceptRanking.value = conceptResponse;
+    console.log('概念排行数据更新成功:', conceptRanking.value);
+  } catch (error) {
+    console.error('获取概念排行数据失败:', error);
   }
 }
 
@@ -781,8 +780,14 @@ const startMarketStatsInterval = () => {
   fetchMarketStats()
   
   // 设置3分钟（180000毫秒）定时更新
-  marketStatsInterval = setInterval(() => {
-    fetchMarketStats()
+  marketStatsInterval = setInterval(async () => {
+    // 检查是否在交易时间，只在交易时段更新
+    const isTrading = await isTradeTime('000001')
+    if (isTrading) {
+      fetchMarketStats()
+    } else {
+      console.log('非交易时段，跳过市场统计数据更新')
+    }
   }, 180000)
   
   console.log('启动市场概况3分钟定时更新')
@@ -794,6 +799,56 @@ const stopMarketStatsInterval = () => {
     clearInterval(marketStatsInterval)
     marketStatsInterval = null
     console.log('停止市场概况定时更新')
+  }
+}
+
+// 启动概念排行定时更新（盘中每1分钟更新）
+const startConceptRankingInterval = () => {
+  stopConceptRankingInterval() // 先清理现有定时器
+  
+  // 立即执行一次
+  fetchConceptRanking()
+  
+  // 设置1分钟（60000毫秒）定时更新
+  conceptRankingInterval = setInterval(async () => {
+    // 检查是否在交易时间，只在交易时段更新
+    const isTrading = await isTradeTime('000001')
+    if (isTrading) {
+      fetchConceptRanking()
+    } else {
+      console.log('非交易时段，跳过概念排行数据更新')
+    }
+  }, 60000)
+  
+  console.log('启动概念排行盘中1分钟定时更新')
+}
+
+// 停止概念排行定时更新
+const stopConceptRankingInterval = () => {
+  if (conceptRankingInterval) {
+    clearInterval(conceptRankingInterval)
+    conceptRankingInterval = null
+    console.log('停止概念排行定时更新')
+  }
+}
+
+// 刷新所有市场数据
+const refreshMarketData = async () => {
+  if (loading.value.marketStats) return
+  
+  loading.value.marketStats = true
+  try {
+    // 并行获取市场统计和概念排行数据
+    await Promise.all([
+      fetchMarketStats(),
+      fetchConceptRanking()
+    ])
+    ElMessage.success('市场数据刷新成功')
+  } catch (error) {
+    console.error('刷新市场数据失败:', error)
+    ElMessage.error('刷新市场数据失败')
+  } finally {
+    loading.value.marketStats = false
   }
 }
 
@@ -825,6 +880,9 @@ onMounted(async () => {
   await fetchMarketStats()
   startMarketStatsInterval()
   
+  // 启动概念排行数据的盘中1分钟定时更新
+  startConceptRankingInterval()
+  
   // 获取股票池数据
   await fetchStockPool()
   
@@ -850,6 +908,9 @@ onUnmounted(() => {
   
   // 停止市场概况定时更新
   stopMarketStatsInterval()
+  
+  // 停止概念排行定时更新
+  stopConceptRankingInterval()
   
   // 停止实时行情轮询
   stopRealTimeQuotePolling()
@@ -1019,8 +1080,8 @@ onUnmounted(() => {
 }
 
 .monitor-list {
-  height: 380px;
-  overflow: hidden;
+  min-height: 200px;
+  max-height: 500px;
 }
 
 .monitor-header,
