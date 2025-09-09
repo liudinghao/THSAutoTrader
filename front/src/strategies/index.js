@@ -4,11 +4,20 @@
  */
 
 // 导入所有策略
+import { analyzeSellPoints } from './sellPointAnalysis.js';
+
 export {
   analyzeSellPoints,
-  convertRawData,
-  formatAnalysisResults,
-} from './sellPointAnalysis.js';
+};
+
+// 导入皮尔逊相关性算法
+import {
+  calculatePearsonCorrelation,
+  calculateStockSimilarity,
+  calculateSimilarityMatrix,
+  getMostSimilarStocks,
+  getCorrelationLabel,
+} from './pearsonCorrelation.js';
 
 // 导出皮尔逊相关性算法
 export {
@@ -17,7 +26,7 @@ export {
   calculateSimilarityMatrix,
   getMostSimilarStocks,
   getCorrelationLabel,
-} from './pearsonCorrelation.js';
+};
 
 // 策略类型枚举
 export const STRATEGY_TYPES = {

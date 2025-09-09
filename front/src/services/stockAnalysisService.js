@@ -31,7 +31,14 @@ const SYSTEM_PROMPT = `你是一位经验丰富的短线交易员，操作风格
 1. 基于技术面分析（趋势、支撑阻力位、成交量变化）
 2. 结合持仓状态和盈亏情况进行决策
 3. 考虑资金管理和风险控制
-4. 提供具体操作点位和仓位建议`;
+4. 关注概念热点和市场情绪
+5. 提供具体操作点位和仓位建议
+
+【风险控制重点】
+- 严格执行止损策略，控制单笔亏损在总资金的3%以内
+- 关注成交量变化，异常放量或缩量需谨慎操作
+- 结合技术指标和市场趋势，避免逆势操作
+- 注意仓位管理，避免重仓单一股票`;
 
 // 交易规则详情
 const TRADING_RULES = {
@@ -123,6 +130,15 @@ export async function getIntradayData(stockCode) {
  * @param {boolean} isTradingTime 是否在交易时间内
  * @returns {string} 分析提示文本
  */
+/**
+ * 构建风险评估部分的文本（不依赖联网搜索）
+ * @param {Object} negativeNewsData 消息数据（当前为空）
+ * @returns {string} 格式化的风险评估文本
+ */
+function buildNegativeNewsSection(negativeNewsData) {
+  return '📊 风险评估：基于技术面和市场数据进行综合评估，联网消息搜索已暂时禁用';
+}
+
 export function buildStockAnalysisPrompt(
   stockCode,
   stockName,
@@ -135,7 +151,8 @@ export function buildStockAnalysisPrompt(
   marketData = null,
   stockConcepts = [],
   marketConcepts = {topRisers: [], topFallers: []},
-  isTradingTime = false
+  isTradingTime = false,
+  negativeNewsData = null
 ) {
   let prompt = '';
 
@@ -228,8 +245,11 @@ ${
     : ''
 }
 
+【风险评估】
+${buildNegativeNewsSection(negativeNewsData)}
+
 【分析要求】
-基于持仓数据、所属概念和市场环境提供：
+基于持仓数据、所属概念、市场环境和技术面分析提供：
 1. 当前盈亏状态分析：${positionInfo.profit}元 (${positionInfo.profitPercent}%)
 2. 所属概念板块的市场表现及影响分析
 3. 操作决策（继续持有/减仓/加仓），考虑所属概念板块走势
@@ -276,8 +296,11 @@ ${
     : ''
 }
 
+【风险评估】
+${buildNegativeNewsSection(negativeNewsData)}
+
 【分析要求】
-基于当前数据、所属概念和市场环境提供：
+基于当前数据、所属概念、市场环境和技术面分析提供：
 1. 当前价位是否适合建仓，考虑所属概念板块表现
 2. 所属概念板块的市场热度及对该股的影响
 3. 建议买入股数（手数），结合所属概念板块走势
@@ -347,13 +370,23 @@ export async function performStockAnalysis(
   const { months = 6, recentDays = 30, recentMinutes = 30 } = options;
 
   try {
-    // 获取数据
+    // 获取数据（暂时禁用联网搜索功能）
     const [dailyKData, minuteData, stockConcepts, isTradingTime] = await Promise.all([
       getHistoricalKLineData(stockCode, months),
       getIntradayData(stockCode),
       getStockConcepts(stockCode),
-      isTradeTime().catch(() => false), // 如果API调用失败，默认非交易时间
-    ]);
+      isTradeTime().catch(() => false) // 如果API调用失败，默认非交易时间
+    ])
+
+    // 暂时禁用联网搜索，使用默认空数据
+    const negativeNewsData = {
+      stockCode,
+      stockName,
+      monthsBack: 1,
+      totalResults: 0,
+      negativeNews: [],
+      summary: '联网搜索功能已暂时禁用'
+    };
 
     // 检查是否持仓
     const positionInfo = checkStockPosition(stockCode, positionData);
@@ -385,7 +418,8 @@ export async function performStockAnalysis(
       marketData,
       stockConcepts,
       marketConcepts,
-      isTradingTime
+      isTradingTime,
+      negativeNewsData
     );
 
     // 调用AI分析（使用system prompt）
@@ -408,6 +442,7 @@ export async function performStockAnalysis(
         dailyKData,
         minuteData,
       },
+      // 联网搜索功能已暂时禁用
     };
   } catch (error) {
     console.error('股票分析失败:', error);

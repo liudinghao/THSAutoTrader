@@ -18,7 +18,7 @@ const routes = [
   {
     path: '/trading-monkey',
     name: 'TradingMonkey',
-    component: () => import('../views/TradingMonkey.vue'),
+    component: () => import('../views/TradingMonkey/Index.vue'),
     meta: {
       title: '交易猿',
       icon: Money,

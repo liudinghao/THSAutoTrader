@@ -5,7 +5,17 @@
       "Bash(npm install:*)",
       "Bash(sed:*)",
       "Bash(grep:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(mkdir:*)",
+      "mcp__mcp-chrome__chrome_navigate",
+      "mcp__mcp-chrome__chrome_screenshot",
+      "mcp__mcp-chrome__chrome_console",
+      "mcp__mcp-chrome__chrome_get_web_content",
+      "mcp__filesystem__list_directory",
+      "mcp__filesystem__directory_tree",
+      "Read(//mnt/d/dev/2025/public/THSAutoTrader/src/controller/**)",
+      "Read(//mnt/d/dev/2025/public/THSAutoTrader/src/service/**)",
+      "Bash(curl:*)"
     ],
     "deny": []
   },

@@ -367,11 +367,8 @@ export function getMostSimilarStocks(
   return similarities.sort((a, b) => b.similarity - a.similarity);
 }
 
-// 导出所有函数
-export default {
+// 导出剩余的函数（其他函数已在前面用 export function 导出）
+export {
   calculatePearsonCorrelation,
   getCorrelationLabel,
-  calculateStockSimilarity,
-  calculateSimilarityMatrix,
-  getMostSimilarStocks,
 };

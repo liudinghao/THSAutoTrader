@@ -244,9 +244,8 @@ export function getStocksByConceptCode(conceptCode) {
 export async function fetchMinuteData(stockCodes, date = null) {
   return new Promise(async (resolve, reject) => {
     try {
-      // 如果没有指定日期，使用当前日期
-      const targetDate =
-        date || new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      // 如果没有指定日期，使用最近交易日
+      const targetDate = date || await getLatestTradeDate();
       // 首先获取昨收价
       const preCloseData = {};
       try {
@@ -261,7 +260,7 @@ export async function fetchMinuteData(stockCodes, date = null) {
           }
         }
       } catch (error) {
-        console.warn('获取昨收价失败，将使用默认值:', error);
+        console.warn('获取昨收价失败，将使用默认值:', error, stockCodes, targetDate);
       }
 
       // 第一步：请求分时数据
@@ -681,3 +680,92 @@ export function isTradeTime(stockCode = '300033') {
     });
   });
 }
+
+/**
+ * 获取所有板块代码
+ * @param {boolean} needMarket 是否需要市场信息，默认为1
+ * @returns {Promise<Object[]>} 返回板块代码对象数组的Promise
+ * 返回格式示例：[{code: '002402', marketId: '33'}, {code: '002418', marketId: '33'}, ...]
+ */
+export function getAllBlockCode(needMarket = 1) {
+  return new Promise((resolve, reject) => {
+    window.API.use({
+      method: 'Util.getAllBlockCode',
+      data: { needMarket },
+      success: function (data) {
+        try {
+          // 返回的是逗号分隔的板块代码字符串，需要转换为对象数组
+          const rawCodes = data.split(',').filter((code) => code.trim());
+          const blockCodes = rawCodes.map((fullCode) => {
+            const [marketId, code] = fullCode.split(':');
+            return {
+              code: code || '',
+              marketId: marketId || ''
+            };
+          });
+          console.log(
+            `获取到 ${blockCodes.length} 个板块代码:`,
+            blockCodes.slice(0, 10) // 只显示前10个，避免日志过长
+          );
+          resolve(blockCodes);
+        } catch (error) {
+          reject(new Error(`解析板块代码失败: ${error.message}`));
+        }
+      },
+      error: function (error) {
+        console.error('获取板块代码失败:', error);
+        reject(error);
+      },
+      notClient: function () {
+        console.error('API客户端不可用');
+        reject(new Error('API客户端不可用'));
+      },
+    });
+  });
+}
+
+/**
+ * 调起下单窗口
+ * @param {number} cmdStatus 下单状态：0-买入(XD_MAIRU)，1-卖出(XD_MAICHU)
+ * @param {string} stockCode 股票代码，如：'002402'
+ * @param {string} price 价格，可选，默认为空字符串（使用当前市价）
+ * @param {string} amount 数量，可选，默认为空字符串
+ * @returns {Promise<any>} 返回下单结果的Promise
+ */
+export function placeOrder(cmdStatus, stockCode, price = '', amount = '') {
+  return new Promise((resolve, reject) => {
+    const strInfo = `<?xml version="1.0" encoding="GB2312"?><RealTime StockCode="${stockCode}" Market="33"><Bid><Price Selected="1">${price}</Price><Amount>${amount}</Amount></Bid></RealTime>`;
+    const info =
+      'wt_startup=wt_startup=\r\nrealtime=' +
+      window.btoa(unescape(encodeURIComponent(strInfo)));
+
+    window.API.use({
+      method: 'XdMgr.fastCallXiadan',
+      data: {
+        cmd: cmdStatus === 0 ? 'XD_MAIRU' : 'XD_MAICHU',
+        code: stockCode,
+        amount: amount,
+        info: info,
+        default: false,
+        hide: false,
+        select: true,
+      },
+      success: function (data) {
+        console.log(`${cmdStatus === 0 ? '买入' : '卖出'}下单成功:`, stockCode, data);
+        resolve(data);
+      },
+      error: function (error) {
+        console.error(`${cmdStatus === 0 ? '买入' : '卖出'}下单失败:`, stockCode, error);
+        reject(error);
+      },
+      notClient: function () {
+        const errorMsg = 'API客户端不可用';
+        console.error(errorMsg);
+        reject(new Error(errorMsg));
+      },
+    });
+  });
+}
+
+window.getAllBlockCode = getAllBlockCode; // for debug
+window.placeOrder = placeOrder; // for debug
