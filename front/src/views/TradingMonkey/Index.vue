@@ -35,14 +35,6 @@
           @refresh="refreshMarketData"
         />
 
-        <!-- 交易引擎 -->
-        <TradingEngine
-          :stock-data="monitorStocks"
-          :market-data="marketStats"
-          :analysis-results="analysisResults"
-          @execute-signal="handleTradingSignal"
-          @engine-status-changed="handleEngineStatusChanged"
-        />
 
         <!-- 股票监控 -->
         <StockMonitor
@@ -72,19 +64,12 @@
 
       <!-- 右侧列 -->
       <el-col :span="8">
-        <!-- 风险管理 -->
-        <RiskManager
+        <!-- 交易建议 -->
+        <TradingAdvice
+          :market-stats="marketStats"
           :position-data="positionData"
+          :monitor-stocks="monitorStocks"
           :current-prices="currentPrices"
-          :available-funds="parseFloat(availableBalance)"
-          :daily-pnl="calculateDailyPnL()"
-          @execute-order="handleRiskManagerOrder"
-          @set-trailing-stop="handleTrailingStop"
-        />
-
-        <!-- 交易历史 -->
-        <TradingHistory
-          :trading-service="tradingService"
         />
       </el-col>
     </el-row>
@@ -107,16 +92,14 @@ import { Refresh } from '@element-plus/icons-vue'
 import MarketOverview from './components/MarketOverview.vue'
 import StockMonitor from './components/StockMonitor.vue'
 import PositionManager from './components/PositionManager.vue'
-import TradingEngine from './components/TradingEngine.vue'
-import RiskManager from './components/RiskManager.vue'
-import TradingHistory from './components/TradingHistory.vue'
 import AnalysisResultDialog from '../../components/AnalysisResultDialog.vue'
+import TradingAdvice from './components/TradingAdvice.vue'
 
 // 导入服务
 import { TradingService } from './services/tradingService.js'
 import { getPositionData } from '../../api/asset'
 import { fetchRealTimeQuote, isTradeTime, jumpToQuote } from '../../utils/quoteApi.js'
-import { performStockAnalysis } from '../../services/stockAnalysisService'
+import { performStockAnalysis } from './services/stockAnalysisService'
 import { saveAnalysisResult, getAnalysisResult, getAllAnalysisResults } from '../../utils/indexedDB'
 import { getConceptRanking } from '../../api/concept.js'
 import { dataSourceService, DATA_SOURCES } from '../../services/dataSourceService.js'
@@ -173,8 +156,6 @@ let stockQuoteInterval = null
 let marketStatsInterval = null
 let conceptRankingInterval = null
 
-// 交易引擎状态
-const engineRunning = ref(false)
 
 // 核心方法
 
@@ -565,88 +546,9 @@ const jumpToStockQuote = async (stockCode) => {
   }
 }
 
-/**
- * 处理交易信号
- */
-const handleTradingSignal = async (signal) => {
-  console.log('收到交易信号:', signal)
-  
-  try {
-    let result
-    if (signal.type.includes('buy')) {
-      // 执行买入
-      result = await tradingService.executeBuy({
-        stockCode: signal.stockCode,
-        stockName: signal.stockName,
-        quantity: calculateOrderQuantity(signal),
-        price: getCurrentPrice(signal.stockCode),
-        signal: signal
-      })
-    } else if (signal.type.includes('sell')) {
-      // 执行卖出  
-      result = await tradingService.executeSell({
-        stockCode: signal.stockCode,
-        stockName: signal.stockName,
-        quantity: getPositionQuantity(signal.stockCode),
-        price: getCurrentPrice(signal.stockCode),
-        reason: 'signal',
-        signal: signal
-      })
-    }
-    
-    if (result && result.success) {
-      ElMessage.success(`交易信号执行成功: ${signal.stockCode}`)
-    } else {
-      ElMessage.error(`交易信号执行失败: ${result?.message || '未知错误'}`)
-    }
-  } catch (error) {
-    console.error('执行交易信号失败:', error)
-    ElMessage.error('执行交易信号失败')
-  }
-}
 
-/**
- * 处理风险管理器订单
- */
-const handleRiskManagerOrder = async (order) => {
-  console.log('收到风险管理订单:', order)
-  
-  try {
-    let result
-    if (order.action === 'buy') {
-      result = await tradingService.executeBuy(order)
-    } else if (order.action === 'sell') {
-      result = await tradingService.executeSell(order)
-    }
-    
-    if (result && result.success) {
-      ElMessage.success(`${order.type || order.action}订单执行成功: ${order.stockCode}`)
-      // 刷新持仓数据
-      setTimeout(() => refreshPositionData(), 2000)
-    } else {
-      ElMessage.error(`订单执行失败: ${result?.message || '未知错误'}`)
-    }
-  } catch (error) {
-    console.error('执行风险管理订单失败:', error)
-    ElMessage.error('执行订单失败')
-  }
-}
 
-/**
- * 处理跟踪止损设置
- */
-const handleTrailingStop = (params) => {
-  console.log('设置跟踪止损:', params)
-  ElMessage.info(`已为 ${params.stockCode} 设置跟踪止损`)
-}
 
-/**
- * 处理引擎状态变化
- */
-const handleEngineStatusChanged = (running) => {
-  engineRunning.value = running
-  console.log('交易引擎状态:', running ? '运行中' : '已停止')
-}
 
 /**
  * 处理数据源切换
@@ -708,17 +610,6 @@ const getPositionQuantity = (stockCode) => {
   return parseInt(position?.实际数量 || position?.quantity || 0)
 }
 
-/**
- * 计算当日盈亏
- */
-const calculateDailyPnL = () => {
-  // 这里应该根据实际的盈亏计算逻辑
-  // 目前返回模拟数据
-  return positionData.value.reduce((total, position) => {
-    const pnl = parseFloat(position.盈亏 || 0)
-    return total + pnl
-  }, 0)
-}
 
 /**
  * 加载本地数据

@@ -55,7 +55,7 @@ export class WebSearch {
       }
 
       // 处理和过滤搜索结果
-      const processedNews = this.processSearchResults(searchResults, stockCode, stockName)
+      const processedNews = this.processSearchResults(searchResults, stockCode, stockName, monthsBack)
       
       // 缓存结果
       const result = {
@@ -321,7 +321,7 @@ export class WebSearch {
   /**
    * 处理搜索结果
    */
-  processSearchResults(results, stockCode, stockName) {
+  processSearchResults(results, stockCode, stockName, monthsBack = 1) {
     if (!results || results.length === 0) {
       return []
     }
@@ -330,6 +330,7 @@ export class WebSearch {
       .filter(item => item && item.title && item.content)
       .filter(item => this.isRelevantNews(item, stockCode, stockName))
       .filter(item => this.isNegativeNews(item))
+      .filter(item => this.isWithinTimeRange(item, monthsBack)) // 添加时间范围过滤
       .sort((a, b) => (b.relevance || 0) - (a.relevance || 0))
       .slice(0, 10) // 最多返回10条最相关的负面消息
       .map(item => ({
@@ -341,6 +342,89 @@ export class WebSearch {
         relevance: item.relevance,
         negativeKeywords: this.extractNegativeKeywords(item.content)
       }))
+  }
+
+  /**
+   * 判断新闻是否在时间范围内
+   */
+  isWithinTimeRange(item, monthsBack) {
+    try {
+      if (!item.publishTime) {
+        // 如果没有发布时间，默认认为是最近的消息
+        return true
+      }
+
+      const publishDate = this.parsePublishTime(item.publishTime)
+      const now = new Date()
+      const cutoffDate = new Date()
+      cutoffDate.setMonth(cutoffDate.getMonth() - monthsBack)
+
+      // 检查日期是否有效
+      if (isNaN(publishDate.getTime())) {
+        console.warn('无效的发布时间:', item.publishTime)
+        return true // 无效时间默认通过
+      }
+
+      const isWithinRange = publishDate >= cutoffDate && publishDate <= now
+      
+      if (!isWithinRange) {
+        console.log(`消息超出时间范围: ${item.title} - 发布时间: ${item.publishTime}`)
+      }
+      
+      return isWithinRange
+    } catch (error) {
+      console.warn('时间范围检查失败:', error, item.publishTime)
+      return true // 出错时默认通过
+    }
+  }
+
+  /**
+   * 解析发布时间，支持多种格式
+   */
+  parsePublishTime(publishTime) {
+    if (!publishTime) {
+      return new Date()
+    }
+
+    // 尝试直接解析ISO格式和标准格式
+    let date = new Date(publishTime)
+    if (!isNaN(date.getTime())) {
+      return date
+    }
+
+    // 尝试解析中文格式：YYYY年MM月DD日
+    const chineseDateMatch = publishTime.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/)
+    if (chineseDateMatch) {
+      const [, year, month, day] = chineseDateMatch
+      date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      if (!isNaN(date.getTime())) {
+        return date
+      }
+    }
+
+    // 尝试解析 YYYY-MM-DD 格式
+    const dashDateMatch = publishTime.match(/(\d{4})-(\d{1,2})-(\d{1,2})/)
+    if (dashDateMatch) {
+      const [, year, month, day] = dashDateMatch
+      date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      if (!isNaN(date.getTime())) {
+        return date
+      }
+    }
+
+    // 尝试解析 MM/DD/YYYY 格式
+    const slashDateMatch = publishTime.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+    if (slashDateMatch) {
+      const [, month, day, year] = slashDateMatch
+      date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day))
+      if (!isNaN(date.getTime())) {
+        return date
+      }
+    }
+
+    // 如果都解析失败，返回当前时间
+    console.warn('无法解析发布时间格式:', publishTime)
+    return new Date()
   }
 
   /**

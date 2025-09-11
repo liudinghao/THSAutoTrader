@@ -3,14 +3,11 @@
  * 提供股票数据获取和分析功能
  */
 
-import { fetchHistoryData, fetchMinuteData, isTradeTime } from '../utils/quoteApi';
-import { sendMessage } from '../api/llm';
+import { fetchHistoryData, fetchMinuteData, isTradeTime } from '../../../utils/quoteApi.js';
+import { sendLLMMessage } from '../../../services/llmService.js';
 import axios from 'axios';
 
-// API配置
-const DEEPSEEK_API_KEY = 'sk-c7c0c5a0480c462ebcf13be3f999f406';
-const DEEPSEEK_MODEL = 'deepseek-chat';
-// const DEEPSEEK_MODEL = 'deepseek-reasoner';
+// API配置已迁移到 llmConfig.js 统一管理
 
 // 系统提示配置
 const SYSTEM_PROMPT = `你是一位经验丰富的短线交易员，操作风格为激进型。你的职责是根据提供的股票数据给出专业的交易建议。
@@ -423,14 +420,12 @@ export async function performStockAnalysis(
     );
 
     // 调用AI分析（使用system prompt）
-    const response = await sendMessage(
-      DEEPSEEK_API_KEY,
-      DEEPSEEK_MODEL,
+    const response = await sendLLMMessage(
       [
         { role: 'system', content: SYSTEM_PROMPT },
         { role: 'user', content: analysisPrompt },
       ],
-      0.7
+      { temperature: 0.7 }
     );
 
     return {
@@ -438,6 +433,9 @@ export async function performStockAnalysis(
       stockCode,
       stockName,
       analysis: response.content,
+      usage: response.usage,
+      model: response.model,
+      provider: response.provider,
       data: {
         dailyKData,
         minuteData,
