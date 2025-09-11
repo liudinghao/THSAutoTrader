@@ -15,7 +15,8 @@
       "mcp__filesystem__directory_tree",
       "Read(//mnt/d/dev/2025/public/THSAutoTrader/src/controller/**)",
       "Read(//mnt/d/dev/2025/public/THSAutoTrader/src/service/**)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Read(//mnt/d/dev/2025/public/THSAutoTrader/**)"
     ],
     "deny": []
   },

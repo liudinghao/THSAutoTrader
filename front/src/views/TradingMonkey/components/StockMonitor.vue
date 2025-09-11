@@ -137,10 +137,6 @@ const props = defineProps({
   analyzing: {
     type: Boolean,
     default: false
-  },
-  dataSource: {
-    type: String,
-    default: 'auction-strategy'
   }
 })
 

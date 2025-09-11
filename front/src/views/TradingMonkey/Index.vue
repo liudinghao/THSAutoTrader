@@ -41,12 +41,10 @@
           v-model:stocks="monitorStocks"
           :loading="loading.stockPool"
           :analysis-results="analysisResults"
-          :data-source="currentDataSource"
           @refresh="fetchStockPool"
           @analyze-stock="analyzeStock"
           @show-analysis="showAnalysisResult"
           @jump-to-quote="jumpToStockQuote"
-          @data-source-change="handleDataSourceChange"
         />
 
         <!-- 持仓管理 -->
@@ -102,7 +100,7 @@ import { fetchRealTimeQuote, isTradeTime, jumpToQuote } from '../../utils/quoteA
 import { performStockAnalysis } from './services/stockAnalysisService'
 import { saveAnalysisResult, getAnalysisResult, getAllAnalysisResults } from '../../utils/indexedDB'
 import { getConceptRanking } from '../../api/concept.js'
-import { dataSourceService, DATA_SOURCES } from '../../services/dataSourceService.js'
+import { dataSourceService } from './services/dataSourceService.js'
 import axios from 'axios'
 
 // 响应式数据
@@ -122,8 +120,6 @@ const positionData = ref([])
 const analysisResults = ref({})
 const availableBalance = ref('0.00')
 const currentPrices = ref({})
-// 从数据源服务获取保存的数据源选择，或使用默认值
-const currentDataSource = ref(dataSourceService.getCurrentDataSource())
 
 // 市场数据
 const marketStats = ref({
@@ -244,7 +240,7 @@ const fetchStockPool = async (forceRefresh = false) => {
         name: stock.name,
         price: stock.price || '--',
         changePercent: stock.changePercent || '--',
-        source: stock.source || currentDataSource.value
+        source: stock.source || 'auction-strategy'
       }))
       
       // 启动实时数据获取
@@ -550,35 +546,6 @@ const jumpToStockQuote = async (stockCode) => {
 
 
 
-/**
- * 处理数据源切换
- */
-const handleDataSourceChange = async (newDataSource) => {
-  try {
-    // 设置新的数据源
-    dataSourceService.setCurrentDataSource(newDataSource)
-    currentDataSource.value = newDataSource
-    
-    // 停止现有的实时数据轮询
-    stopRealTimeQuotePolling()
-    
-    // 清空当前监控股票
-    monitorStocks.value = []
-    
-    // 获取新数据源的股票数据
-    await fetchStockPool(true) // 强制刷新
-    
-    const sourceName = dataSourceService.getCurrentDataSourceConfig().name
-    ElMessage.success(`已切换到 ${sourceName}`)
-    
-  } catch (error) {
-    console.error('数据源切换失败:', error)
-    ElMessage.error(`数据源切换失败: ${error.message}`)
-    
-    // 切换失败时回退到之前的数据源
-    currentDataSource.value = dataSourceService.getCurrentDataSource()
-  }
-}
 
 // 辅助函数
 
