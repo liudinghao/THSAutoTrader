@@ -61,13 +61,118 @@ npm install         # 安装所有依赖
 
 ## 核心功能
 
-- **交易自动化**: `TradingMonkey.vue` - 主要交易界面
+- **交易自动化**: `TradingMonkey/Index.vue` - 主要交易界面
 - **策略管理**: `TradingStrategy.vue` - 配置交易策略
 - **股票池**: `StockPool.vue` - 管理股票关注列表
 - **资产管理**: `AssetManagement.vue` - 投资组合跟踪
 - **多股图表**: `MultiStockChart.vue` - 实时价格可视化
 - **LLM 接口**: `LLMInterface.vue` - AI 模型调试
 - **数据更新**: `DataUpdate.vue` - 市场数据同步
+
+## TradingMonkey 模块架构
+
+### 目录结构
+```
+src/views/TradingMonkey/
+├── Index.vue                    # 主入口组件
+├── components/                  # 子组件
+│   ├── StockMonitor.vue        # 股票监控组件
+│   ├── PositionManager.vue     # 持仓管理组件
+│   ├── MarketOverview.vue      # 市场概况组件
+│   └── TradingAdvice.vue       # 交易建议组件
+├── services/                    # 业务服务层
+│   ├── dataSourceService.js    # 数据源服务
+│   ├── stockAnalysisService.js # 股票分析服务
+│   ├── marketAnalysisService.js # 市场分析服务
+│   ├── tradingService.js       # 交易服务
+│   ├── riskManager.js          # 风险管理
+│   └── decisionEngine.js       # 决策引擎
+└── composables/                 # 组合式API
+    └── useStockMonitor.js      # 股票监控状态管理
+```
+
+### 设计原则
+
+1. **组件职责分离**
+   - 组件只负责 UI 展示和事件发射
+   - 业务逻辑封装在 services 层
+   - 状态管理使用 composables
+
+2. **数据流设计**
+   - 采用单向数据流
+   - 父组件管理全局状态
+   - 子组件通过事件与父组件通信
+
+3. **状态管理**
+   - 使用组合式API管理复杂状态
+   - 业务相关的 composable 放在对应模块下
+   - 通用的 composable 可放在根 composables 目录
+
+### 股票监控模块（已重构）
+
+#### useStockMonitor Composable
+```javascript
+// src/views/TradingMonkey/composables/useStockMonitor.js
+export function useStockMonitor() {
+  // 集中管理股票监控的所有状态和操作
+  return {
+    stocks,          // 响应式股票列表
+    loading,         // 加载状态
+    stockCodes,      // 计算属性：股票代码列表
+    hasStocks,       // 计算属性：是否有股票
+    
+    // 方法
+    fetchStocks,          // 获取股票数据
+    updateRealTimeData,   // 更新实时数据
+    addStock,             // 添加监控股票
+    removeStock,          // 删除监控股票
+    // ... 其他方法
+  }
+}
+```
+
+#### 组件通信模式
+```javascript
+// 父组件 (Index.vue)
+const stockMonitor = useStockMonitor()
+
+// 子组件 (StockMonitor.vue) - 只负责展示
+<StockMonitor
+  :stocks="stockMonitor.stocks.value"
+  :loading="stockMonitor.loading.value.fetch"
+  @add-stock="handleAddStock"
+  @remove-stock="handleRemoveStock"
+/>
+```
+
+### 开发指南
+
+1. **添加新组件**
+   - 组件放在 `components/` 目录
+   - 只处理 UI 逻辑，业务逻辑放在 services
+   - 使用事件与父组件通信
+
+2. **添加新服务**
+   - 服务类放在 `services/` 目录
+   - 每个服务负责特定的业务域
+   - 服务之间可以相互调用
+
+3. **状态管理**
+   - 复杂状态使用 composables 管理
+   - 简单状态可以直接在组件中使用 ref/reactive
+   - 跨组件状态提升到父组件
+
+### 性能优化
+
+1. **实时数据更新**
+   - 使用 Map 优化数据查找
+   - 只在交易时间进行轮询
+   - 防抖处理避免频繁更新
+
+2. **组件渲染**
+   - 合理使用计算属性
+   - 避免在模板中进行复杂计算
+   - 大列表使用虚拟滚动（如需要）
 
 ## API 集成
 

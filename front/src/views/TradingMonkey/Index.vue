@@ -38,10 +38,12 @@
 
         <!-- 股票监控 -->
         <StockMonitor
-          v-model:stocks="monitorStocks"
-          :loading="loading.stockPool"
+          :stocks="stockMonitor.stocks.value"
+          :loading="stockMonitor.loading.value.fetch"
           :analysis-results="analysisResults"
-          @refresh="fetchStockPool"
+          @refresh="handleRefreshStocks"
+          @add-stock="handleAddStock"
+          @remove-stock="handleRemoveStock"
           @analyze-stock="analyzeStock"
           @show-analysis="showAnalysisResult"
           @jump-to-quote="jumpToStockQuote"
@@ -66,7 +68,7 @@
         <TradingAdvice
           :market-stats="marketStats"
           :position-data="positionData"
-          :monitor-stocks="monitorStocks"
+          :monitor-stocks="stockMonitor.stocks.value"
           :current-prices="currentPrices"
         />
       </el-col>
@@ -100,7 +102,7 @@ import { fetchRealTimeQuote, isTradeTime, jumpToQuote } from '../../utils/quoteA
 import { performStockAnalysis } from './services/stockAnalysisService'
 import { saveAnalysisResult, getAnalysisResult, getAllAnalysisResults } from '../../utils/indexedDB'
 import { getConceptRanking } from '../../api/concept.js'
-import { dataSourceService } from './services/dataSourceService.js'
+import { useStockMonitor } from './composables/useStockMonitor.js'
 import axios from 'axios'
 
 // 响应式数据
@@ -114,8 +116,10 @@ const loading = ref({
   marketStats: false
 })
 
+// 股票监控状态管理
+const stockMonitor = useStockMonitor()
+
 // 核心数据
-const monitorStocks = ref([])
 const positionData = ref([])
 const analysisResults = ref({})
 const availableBalance = ref('0.00')
@@ -224,37 +228,15 @@ const refreshPositionData = async () => {
 }
 
 /**
- * 获取股票池数据
+ * 刷新股票监控数据
  */
-const fetchStockPool = async () => {
-  if (loading.value.stockPool) return
-  
-  loading.value.stockPool = true
-  try {
-    // 使用数据源服务获取数据
-    const stockData = await dataSourceService.getStockData()
-    
-    if (Array.isArray(stockData)) {
-      monitorStocks.value = stockData.map(stock => ({
-        code: stock.code,
-        name: stock.name,
-        price: stock.price || '--',
-        changePercent: stock.changePercent || '--',
-        limitUpReason: stock.limitUpReason || '--',
-        source: stock.source || 'auction-strategy'
-      }))
-      
-      // 启动实时数据获取
-      await fetchRealTimeStockData()
-      startRealTimeQuotePolling()
-    } else {
-      ElMessage.warning('获取股票池数据格式异常')
-    }
-  } catch (error) {
-    console.error('获取股票池数据失败:', error)
-    ElMessage.error(`获取股票池数据失败: ${error.message}`)
-  } finally {
-    loading.value.stockPool = false
+const handleRefreshStocks = async () => {
+  const success = await stockMonitor.fetchStocks()
+  if (success) {
+    // 先获取一次实时数据（不管是否交易时间）
+    await stockMonitor.updateRealTimeData()
+    // 然后启动交易时间轮询
+    startRealTimeQuotePolling()
   }
 }
 
@@ -262,29 +244,9 @@ const fetchStockPool = async () => {
  * 获取实时股票数据
  */
 const fetchRealTimeStockData = async () => {
-  try {
-    const stockCodes = monitorStocks.value.map(stock => stock.code)
-    if (stockCodes.length === 0) return
-    
-    const realTimeData = await fetchRealTimeQuote(stockCodes)
+  const realTimeData = await stockMonitor.updateRealTimeData()
+  if (realTimeData) {
     currentPrices.value = realTimeData
-    
-    // 更新股票数据
-    monitorStocks.value = monitorStocks.value.map(stock => {
-      const quoteData = realTimeData[stock.code]
-      if (quoteData) {
-        return {
-          ...stock,
-          price: parseFloat(quoteData.NEW || 0).toFixed(2),
-          changePercent: parseFloat(quoteData.ZHANGDIEFU || 0).toFixed(2),
-          // 保持原有的涨停原因
-          limitUpReason: stock.limitUpReason
-        }
-      }
-      return stock
-    })
-  } catch (error) {
-    console.error('获取实时股票数据失败:', error)
   }
 }
 
@@ -294,7 +256,7 @@ const fetchRealTimeStockData = async () => {
 const startRealTimeQuotePolling = async () => {
   stopRealTimeQuotePolling()
   
-  if (monitorStocks.value.length === 0) return
+  if (!stockMonitor.hasStocks.value) return
   
   try {
     const isTrading = await isTradeTime('300033')
@@ -525,6 +487,25 @@ const showAnalysisResult = async (stock) => {
 }
 
 /**
+ * 处理添加监控股票
+ */
+const handleAddStock = (stockInfo) => {
+  stockMonitor.addStock(stockInfo)
+}
+
+/**
+ * 处理删除监控股票
+ */
+const handleRemoveStock = ({ index, stockCode }) => {
+  // 支持按索引或股票代码删除
+  if (typeof index === 'number') {
+    stockMonitor.removeStockByIndex(index)
+  } else if (stockCode) {
+    stockMonitor.removeStock(stockCode)
+  }
+}
+
+/**
  * 跳转到股票分时图
  */
 const jumpToStockQuote = async (stockCode) => {
@@ -534,7 +515,7 @@ const jumpToStockQuote = async (stockCode) => {
   }
   
   try {
-    const stockCodeList = monitorStocks.value.map(stock => stock.code).filter(code => code && code !== stockCode)
+    const stockCodeList = stockMonitor.stocks.value.map(stock => stock.code).filter(code => code && code !== stockCode)
     const trackingList = [stockCode, ...stockCodeList]
     
     jumpToQuote(stockCode, trackingList)
@@ -678,7 +659,7 @@ onMounted(async () => {
   console.log('初始化数据源: 集合竞价策略')
   
   // 获取股票池数据
-  await fetchStockPool()
+  await handleRefreshStocks()
   
   // 获取持仓数据
   try {

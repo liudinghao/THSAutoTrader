@@ -153,11 +153,12 @@ const props = defineProps({
 
 // Emits
 const emit = defineEmits([
-  'update:stocks',
   'refresh', 
   'analyze-stock', 
   'show-analysis',
-  'jump-to-quote'
+  'jump-to-quote',
+  'add-stock',
+  'remove-stock'
 ])
 
 // 响应式数据
@@ -168,50 +169,32 @@ const addForm = reactive({
 })
 
 
-// 计算属性
-const stocks = computed({
-  get: () => props.stocks,
-  set: (value) => emit('update:stocks', value)
-})
+// 计算属性 - 简化为只读
+const stocks = computed(() => props.stocks)
 
 // 方法
 
 const confirmAdd = () => {
-  if (!addForm.code.trim() || !addForm.name.trim()) {
-    ElMessage.warning('请填写完整的股票信息')
-    return
+  const stockInfo = {
+    code: addForm.code.trim(),
+    name: addForm.name.trim()
   }
-
-  // 检查是否已存在
-  const exists = stocks.value.some(stock => stock.code === addForm.code.trim())
-  if (exists) {
-    ElMessage.warning('该股票已在监控列表中')
-    return
-  }
-
-  // 添加到监控列表
-  const newStocks = [...stocks.value, {
-    code: addForm.code.trim().toUpperCase(),
-    name: addForm.name.trim(),
-    price: '0.00',
-    changePercent: '0.00'
-  }]
   
-  stocks.value = newStocks
+  // 通知父组件处理添加逻辑
+  emit('add-stock', stockInfo)
   
   // 重置表单
   addForm.code = ''
   addForm.name = ''
   showAddDialog.value = false
-  
-  ElMessage.success('添加监控股票成功')
 }
 
 const removeStock = (index) => {
-  const newStocks = [...stocks.value]
-  newStocks.splice(index, 1)
-  stocks.value = newStocks
-  ElMessage.success('删除监控股票成功')
+  const stock = stocks.value[index]
+  if (stock) {
+    // 通知父组件处理删除逻辑
+    emit('remove-stock', { index, stockCode: stock.code })
+  }
 }
 
 const getChangeClass = (changePercent) => {
