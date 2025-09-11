@@ -16,7 +16,8 @@
       "Read(//mnt/d/dev/2025/public/THSAutoTrader/src/controller/**)",
       "Read(//mnt/d/dev/2025/public/THSAutoTrader/src/service/**)",
       "Bash(curl:*)",
-      "Read(//mnt/d/dev/2025/public/THSAutoTrader/**)"
+      "Read(//mnt/d/dev/2025/public/THSAutoTrader/**)",
+      "WebFetch(domain:www.wttiao.com)"
     ],
     "deny": []
   },

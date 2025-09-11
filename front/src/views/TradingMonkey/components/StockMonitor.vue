@@ -46,6 +46,17 @@
           </span>
         </template>
       </el-table-column>
+      <el-table-column prop="limitUpReason" label="涨停原因" width="150">
+        <template #default="scope">
+          <el-tooltip
+            :content="scope.row.limitUpReason"
+            placement="top"
+            effect="light"
+          >
+            <span class="limit-up-reason">{{ scope.row.limitUpReason }}</span>
+          </el-tooltip>
+        </template>
+      </el-table-column>
       <el-table-column label="操作建议" width="100">
         <template #default="scope">
           <el-tooltip 
@@ -264,6 +275,23 @@ const getChangeClass = (changePercent) => {
 
 .text-green {
   color: #67c23a;
+}
+
+.limit-up-reason {
+  cursor: pointer;
+  color: #e74c3c;
+  font-weight: 500;
+  max-width: 130px;
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.limit-up-reason:hover {
+  color: #c0392b;
+  text-decoration: underline;
 }
 
 .dialog-footer {

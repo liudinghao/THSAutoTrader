@@ -226,13 +226,13 @@ const refreshPositionData = async () => {
 /**
  * 获取股票池数据
  */
-const fetchStockPool = async (forceRefresh = false) => {
+const fetchStockPool = async () => {
   if (loading.value.stockPool) return
   
   loading.value.stockPool = true
   try {
     // 使用数据源服务获取数据
-    const stockData = await dataSourceService.getStockData(forceRefresh)
+    const stockData = await dataSourceService.getStockData()
     
     if (Array.isArray(stockData)) {
       monitorStocks.value = stockData.map(stock => ({
@@ -240,6 +240,7 @@ const fetchStockPool = async (forceRefresh = false) => {
         name: stock.name,
         price: stock.price || '--',
         changePercent: stock.changePercent || '--',
+        limitUpReason: stock.limitUpReason || '--',
         source: stock.source || 'auction-strategy'
       }))
       
@@ -275,7 +276,9 @@ const fetchRealTimeStockData = async () => {
         return {
           ...stock,
           price: parseFloat(quoteData.NEW || 0).toFixed(2),
-          changePercent: parseFloat(quoteData.ZHANGDIEFU || 0).toFixed(2)
+          changePercent: parseFloat(quoteData.ZHANGDIEFU || 0).toFixed(2),
+          // 保持原有的涨停原因
+          limitUpReason: stock.limitUpReason
         }
       }
       return stock
@@ -671,8 +674,8 @@ onMounted(async () => {
   // 启动市场数据定时更新
   startMarketDataIntervals()
   
-  // 初始化数据源服务（无需重新设置，因为构造函数已经从localStorage读取）
-  console.log(`初始化数据源: ${dataSourceService.getCurrentDataSourceConfig().name}`)
+  // 初始化集合竞价策略数据源
+  console.log('初始化数据源: 集合竞价策略')
   
   // 获取股票池数据
   await fetchStockPool()
