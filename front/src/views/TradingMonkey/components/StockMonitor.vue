@@ -4,34 +4,11 @@
       <div class="card-header">
         <div class="header-left">
           <span>👁️ 监控股票</span>
-          <div class="data-source-selector">
-            <el-select 
-              v-model="currentDataSource" 
-              size="small" 
-              style="width: 140px"
-              @change="handleDataSourceChange"
-            >
-              <el-option 
-                label="龙回头策略" 
-                value="dragon-back" 
-              />
-              <el-option 
-                label="集合竞价策略" 
-                value="auction-strategy" 
-              />
-            </el-select>
+          <div class="data-source-info">
+            <el-tag size="small" type="warning">集合竞价策略</el-tag>
           </div>
         </div>
         <div class="header-actions">
-          <el-tooltip content="当前数据源状态" placement="top">
-            <el-tag 
-              :type="dataSourceStatus.type" 
-              size="small"
-              effect="plain"
-            >
-              {{ dataSourceStatus.text }}
-            </el-tag>
-          </el-tooltip>
           <el-button size="small" @click="$emit('refresh')" :loading="loading">刷新</el-button>
           <el-button size="small" @click="showAddDialog = true">添加监控</el-button>
         </div>
@@ -163,7 +140,7 @@ const props = defineProps({
   },
   dataSource: {
     type: String,
-    default: 'dragon-back'
+    default: 'auction-strategy'
   }
 })
 
@@ -173,8 +150,7 @@ const emit = defineEmits([
   'refresh', 
   'analyze-stock', 
   'show-analysis',
-  'jump-to-quote',
-  'data-source-change'
+  'jump-to-quote'
 ])
 
 // 响应式数据
@@ -184,11 +160,6 @@ const addForm = reactive({
   name: ''
 })
 
-// 数据源相关
-const currentDataSource = computed({
-  get: () => props.dataSource,
-  set: (value) => emit('data-source-change', value)
-})
 
 // 计算属性
 const stocks = computed({
@@ -196,26 +167,7 @@ const stocks = computed({
   set: (value) => emit('update:stocks', value)
 })
 
-// 数据源状态显示
-const dataSourceStatus = computed(() => {
-  const statusMap = {
-    'dragon-back': {
-      type: 'success',
-      text: '龙回头'
-    },
-    'auction-strategy': {
-      type: 'warning', 
-      text: '集合竞价'
-    }
-  }
-  return statusMap[props.dataSource] || { type: 'info', text: '未知' }
-})
-
 // 方法
-const handleDataSourceChange = (newDataSource) => {
-  ElMessage.info(`切换到数据源: ${newDataSource === 'dragon-back' ? '龙回头策略' : '集合竞价策略'}`)
-  emit('data-source-change', newDataSource)
-}
 
 const confirmAdd = () => {
   if (!addForm.code.trim() || !addForm.name.trim()) {
@@ -280,7 +232,7 @@ const getChangeClass = (changePercent) => {
   gap: 15px;
 }
 
-.data-source-selector {
+.data-source-info {
   display: flex;
   align-items: center;
 }
