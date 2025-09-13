@@ -164,7 +164,23 @@ const disconnect = () => {
   if (signalingSocket) {
     signalingSocket.close();
   }
-  peerConnections.forEach(peer => peer.close());
+  // 清理所有连接
+  peerConnections.forEach(peer => {
+    try {
+      peer.close();
+    } catch (error) {
+      // 忽略关闭失败
+    }
+  });
+  
+  dataChannels.forEach(channel => {
+    try {
+      channel.close();
+    } catch (error) {
+      // 忽略关闭失败
+    }
+  });
+  
   peerConnections.clear();
   dataChannels.clear();
   
@@ -195,7 +211,12 @@ const connectToSignalingServer = () => {
     };
     
     signalingSocket.onmessage = (event) => {
-      handleSignalingMessage(JSON.parse(event.data));
+      try {
+        const message = JSON.parse(event.data);
+        handleSignalingMessage(message);
+      } catch (error) {
+        // JSON解析失败，忽略无效消息
+      }
     };
     
     signalingSocket.onerror = (error) => {
@@ -205,6 +226,13 @@ const connectToSignalingServer = () => {
     signalingSocket.onclose = () => {
       isConnected.value = false;
       connecting.value = false;
+      
+      // WebSocket断开时清理所有WebRTC连接
+      peerConnections.forEach((pc, userId) => {
+        cleanupPeerConnection(userId);
+      });
+      
+      signalingSocket = null;
     };
   });
 };
@@ -237,7 +265,9 @@ const handleSignalingMessage = (message) => {
 // WebRTC连接建立
 const createPeerConnection = (targetUserId) => {
   const config = {
-    iceServers: []
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' }
+    ]
   };
   
   const pc = new RTCPeerConnection(config);
@@ -247,7 +277,14 @@ const createPeerConnection = (targetUserId) => {
   
   // 添加连接状态监控
   pc.oniceconnectionstatechange = () => {
-    // ICE连接状态变化处理
+    if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+      // 连接失败或断开，延迟清理资源
+      setTimeout(() => {
+        if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+          cleanupPeerConnection(targetUserId);
+        }
+      }, 5000); // 5秒后再次检查
+    }
   };
   
   pc.onsignalingstatechange = () => {
@@ -255,7 +292,9 @@ const createPeerConnection = (targetUserId) => {
   };
   
   pc.onconnectionstatechange = () => {
-    // 连接状态变化处理
+    if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+      cleanupPeerConnection(targetUserId);
+    }
   };
   
   // 监听数据通道事件（Answer方）
@@ -265,12 +304,16 @@ const createPeerConnection = (targetUserId) => {
   
   // 监听ICE候选
   pc.onicecandidate = (event) => {
-    if (event.candidate) {
-      signalingSocket.send(JSON.stringify({
-        type: 'ice-candidate',
-        candidate: event.candidate,
-        target: targetUserId
-      }));
+    if (event.candidate && signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
+      try {
+        signalingSocket.send(JSON.stringify({
+          type: 'ice-candidate',
+          candidate: event.candidate,
+          target: targetUserId
+        }));
+      } catch (error) {
+        // 发送ICE候选失败
+      }
     }
   };
   
@@ -313,8 +356,16 @@ const setupDataChannel = (channel, targetUserId) => {
 const handleOffer = async (message) => {
   const { from: targetUserId, offer } = message;
   
+  // 检查是否已存在有效连接
   if (peerConnections.has(targetUserId)) {
-    return; // 已经存在连接
+    const existingPc = peerConnections.get(targetUserId);
+    if (existingPc.connectionState !== 'closed' && existingPc.connectionState !== 'failed') {
+      return; // 已经存在有效连接
+    }
+    // 清理旧的失效连接
+    existingPc.close();
+    peerConnections.delete(targetUserId);
+    dataChannels.delete(targetUserId);
   }
 
   const pc = createPeerConnection(targetUserId);
@@ -324,11 +375,17 @@ const handleOffer = async (message) => {
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
 
-    signalingSocket.send(JSON.stringify({
-      type: 'answer',
-      answer: answer,
-      target: targetUserId
-    }));
+    if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
+      try {
+        signalingSocket.send(JSON.stringify({
+          type: 'answer',
+          answer: answer,
+          target: targetUserId
+        }));
+      } catch (error) {
+        // 发送Answer失败
+      }
+    }
 
 
   } catch (error) {
@@ -382,29 +439,53 @@ const handleUserJoined = async (message) => {
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
 
-    signalingSocket.send(JSON.stringify({
-      type: 'offer',
-      offer: offer,
-      target: targetUserId
-    }));
+    if (signalingSocket && signalingSocket.readyState === WebSocket.OPEN) {
+      try {
+        signalingSocket.send(JSON.stringify({
+          type: 'offer',
+          offer: offer,
+          target: targetUserId
+        }));
+      } catch (error) {
+        // 发送Offer失败
+      }
+    }
 
   } catch (error) {
     // 创建Offer失败
   }
 };
 
-// 处理用户离开
-const handleUserLeft = (message) => {
-  const { user: targetUserId } = message;
-  
+// 清理单个Peer连接
+const cleanupPeerConnection = (targetUserId) => {
   const pc = peerConnections.get(targetUserId);
   if (pc) {
-    pc.close();
+    try {
+      pc.close();
+    } catch (error) {
+      // 忽略关闭失败
+    }
+  }
+  
+  const channel = dataChannels.get(targetUserId);
+  if (channel) {
+    try {
+      channel.close();
+    } catch (error) {
+      // 忽略关闭失败
+    }
   }
   
   peerConnections.delete(targetUserId);
   dataChannels.delete(targetUserId);
   peerCount.value = dataChannels.size;
+};
+
+// 处理用户离开
+const handleUserLeft = (message) => {
+  const { user: targetUserId } = message;
+  
+  cleanupPeerConnection(targetUserId);
   
   ElMessage.info(`${targetUserId} 离开房间`);
 };
@@ -421,7 +502,12 @@ const sendMessage = () => {
   
   dataChannels.forEach((channel, userId) => {
     if (channel.readyState === 'open') {
-      channel.send(JSON.stringify(message));
+      try {
+        channel.send(JSON.stringify(message));
+      } catch (error) {
+        // 发送消息失败，可能连接已关闭
+        cleanupPeerConnection(userId);
+      }
     }
   });
   
@@ -445,7 +531,12 @@ const sendTestData = () => {
   
   dataChannels.forEach((channel, userId) => {
     if (channel.readyState === 'open') {
-      channel.send(JSON.stringify(testData));
+      try {
+        channel.send(JSON.stringify(testData));
+      } catch (error) {
+        // 发送测试数据失败
+        cleanupPeerConnection(userId);
+      }
     }
   });
   
