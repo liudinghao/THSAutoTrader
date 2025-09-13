@@ -70,6 +70,7 @@ import {
   calculateRiskLevel,
   performAIMarketAnalysis
 } from '../services/marketAnalysisService.js'
+import { isTradingDay } from '../../../utils/quoteApi.js'
 
 // Props
 const props = defineProps({
@@ -95,6 +96,7 @@ const props = defineProps({
 const analyzing = ref(false)
 const aiAnalysisResult = ref('')
 const analysisTimestamp = ref(null)
+const isCurrentlyTradingDay = ref(null) // null表示还未判断，true/false表示是否为交易日
 
 // 本地存储键名
 const STORAGE_KEY = 'trading_advice_analysis'
@@ -117,13 +119,15 @@ const basicSuggestions = computed(() => generateBasicSuggestions(props.marketSta
 const tradingPlanTitle = computed(() => {
   const now = new Date()
   const hour = now.getHours()
-  const day = now.getDay() // 0=周日, 1=周一, ..., 6=周六
   
-  // 判断是否为交易日
-  const isTradingDay = day >= 1 && day <= 5 // 周一到周五
+  // 如果无法确定交易日状态（API调用失败），显示通用标题
+  if (isCurrentlyTradingDay.value === null) {
+    return '交易建议（无法确定交易日状态）'
+  }
   
-  if (!isTradingDay) {
-    return '下周交易计划'
+  // 根据准确的交易日判断结果显示标题
+  if (!isCurrentlyTradingDay.value) {
+    return '非交易日'
   }
   
   // 交易日的时间判断
@@ -236,9 +240,22 @@ const formatTime = (timestamp) => {
   })
 }
 
-// 组件初始化时加载本地存储的分析结果
-onMounted(() => {
+// 异步判断当前是否为交易日
+const checkTradingDay = async () => {
+  try {
+    const result = await isTradingDay()
+    isCurrentlyTradingDay.value = result
+  } catch (error) {
+    console.error('判断交易日失败:', error)
+    // API调用失败时，设置为null表示无法确定
+    isCurrentlyTradingDay.value = null
+  }
+}
+
+// 组件初始化时加载本地存储的分析结果并判断交易日
+onMounted(async () => {
   loadAnalysisFromLocal()
+  await checkTradingDay()
 })
 
 // 监听市场数据变化，自动更新基础建议

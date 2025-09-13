@@ -180,6 +180,50 @@ const stockMonitor = useStockMonitor()
 - 股票数据获取通过 `src/utils/quoteApi.js`
 - IndexedDB 存储通过 `src/utils/indexedDB.js`
 
+### quoteApi.js 函数清单
+
+**⚠️ 在添加新功能前，请先检查此列表，避免重复造轮子！**
+
+#### 时间工具函数
+- `formatTimestamp(timestamp, format)` - 时间戳转换工具，支持自定义格式
+- `timestampToTimeString(timestamp)` - 时间戳转换为 HH:mm:00 格式
+- `timestampToDateTime(timestamp)` - 时间戳转换为完整日期时间格式
+
+#### 交易日期相关
+- `getLatestTradeDate(date)` - 获取最近一个交易日（YYYYMMDD格式）
+- `getPreTradeDate(date)` - 获取上一个交易日
+- `getPreviousTradeDates(date, count)` - 获取最近N个交易日列表
+- `isTradingDay()` - 判断当前是否为交易日（基于真实交易日历）
+- `isTradeTime(stockCode)` - 检查是否在交易时间内（调用同花顺API，最准确）
+
+#### 行情数据获取
+- `fetchMinuteData(stockCodes, date)` - 获取股票分时数据，支持多股票
+- `fetchRealTimeQuote(stockCodes)` - 获取实时行情数据
+- `fetchHistoryData(stockCodes, beginDate, endDate)` - 获取历史K线数据
+
+#### 推送与监控
+- `registerPush(codes, callback)` - 注册股票推送监听
+- `unregisterPush(sessionId)` - 取消推送监听
+
+#### 股票操作
+- `jumpToQuote(code, stockCode)` - 跳转到分时图
+- `placeOrder(cmdStatus, stockCode, price, amount)` - 调起下单窗口
+
+#### 自选股管理
+- `getSelfStocks()` - 获取自选股列表
+- `addSelfStock(codes)` - 添加自选股
+- `removeSelfStock(codes)` - 删除自选股
+
+#### 股票代码获取
+- `getAllStockCodes(needMarket)` - 获取所有股票代码（集合竞价策略用）
+- `getStocksByConceptCode(conceptCode)` - 根据概念代码获取股票列表
+
+#### 使用建议
+1. **交易时间判断**：优先使用 `isTradeTime()` 而非自己写时间判断
+2. **交易日判断**：使用 `isTradingDay()` 获取准确的交易日状态
+3. **行情数据**：根据需求选择分时、实时或历史数据接口
+4. **时间处理**：使用内置的时间转换函数，格式统一
+
 ## 构建配置
 
 - **输出**: 构建到 `../html` 目录，使用哈希文件名

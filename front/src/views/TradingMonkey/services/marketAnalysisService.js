@@ -1,5 +1,5 @@
 import { sendLLMMessage } from '../../../services/llmService.js'
-import { fetchHistoryData } from '../../../utils/quoteApi.js'
+import { fetchHistoryData, isTradingDay } from '../../../utils/quoteApi.js'
 
 /**
  * 大盘分析服务
@@ -11,7 +11,7 @@ const INDEX_CODES = {
   sh_index: '16:1A0001',    // 上证指数
   sz_index: '32:399001',    // 深证成指
   gem_index: '32:399006',   // 创业板指
-  microcap_index: '48:883418' // 北证50
+  microcap_index: '48:883418' // 微盘股指数
 }
 
 /**
@@ -231,9 +231,9 @@ export function buildMarketAnalysisPrompt(marketStats, positionData, monitorStoc
   let prompt = `请分析当前A股市场整体情况并给出交易建议：
 
 ## 市场概况数据
-- 上证指数: ${sh_index.price || 0} (${sh_index.change_percent || 0}%)
-- 深证成指: ${sz_index.price || 0} (${sz_index.change_percent || 0}%)
-- 创业板指: ${gem_index.price || 0} (${gem_index.change_percent || 0}%)
+- 上证指数: ${sh_index.price} (${sh_index.change_percent}%)
+- 深证成指: ${sz_index.price} (${sz_index.change_percent}%)
+- 创业板指: ${gem_index.price} (${gem_index.change_percent}%)
 - 涨停家数: ${limit_up}
 - 跌停家数: ${limit_down}
 - 上涨家数: ${rising}
@@ -341,44 +341,3 @@ export function generateMarketSummary(marketStats) {
   }
 }
 
-/**
- * 判断是否为交易日
- * @returns {boolean} 是否为交易日
- */
-export function isTradingDay() {
-  const now = new Date()
-  const day = now.getDay() // 0=周日, 1=周一, ..., 6=周六
-  
-  // 周末不是交易日
-  if (day === 0 || day === 6) {
-    return false
-  }
-  
-  // 这里可以扩展添加节假日判断
-  // 暂时只判断周末
-  return true
-}
-
-/**
- * 判断是否在交易时间内
- * @returns {boolean} 是否在交易时间
- */
-export function isInTradingHours() {
-  if (!isTradingDay()) {
-    return false
-  }
-  
-  const now = new Date()
-  const hour = now.getHours()
-  const minute = now.getMinutes()
-  const currentTime = hour * 100 + minute
-  
-  // 上午: 9:30-11:30, 下午: 13:00-15:00
-  const morningStart = 930
-  const morningEnd = 1130
-  const afternoonStart = 1300
-  const afternoonEnd = 1500
-  
-  return (currentTime >= morningStart && currentTime <= morningEnd) ||
-         (currentTime >= afternoonStart && currentTime <= afternoonEnd)
-}

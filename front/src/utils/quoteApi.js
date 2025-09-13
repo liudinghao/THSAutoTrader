@@ -763,7 +763,26 @@ export function placeOrder(cmdStatus, stockCode, price = '', amount = '') {
   });
 }
 
+/**
+ * 判断是否为交易日
+ * @returns {Promise<boolean>} 是否为交易日
+ * @throws {Error} 当API调用失败时抛出错误
+ */
+export async function isTradingDay() {
+  // 获取当前日期，格式：YYYYMMDD
+  const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
+  
+  // 获取最近一个交易日
+  const latestTradeDate = await getLatestTradeDate(today)
+  
+  // 如果今日等于最近交易日，说明今日是交易日
+  return today === latestTradeDate
+}
+
+
 window.getAllStockCodes = getAllStockCodes; // for debug
 // 保持向后兼容性
 window.getAllBlockCode = getAllStockCodes;
 window.placeOrder = placeOrder; // for debug
+window.getLatestTradeDate = getLatestTradeDate; // for debug
+window.isTradingDay = isTradingDay; // for debug

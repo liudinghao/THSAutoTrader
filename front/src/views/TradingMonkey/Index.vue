@@ -600,9 +600,6 @@ const startMarketDataIntervals = () => {
     const isTrading = await isTradeTime()
     if (isTrading) {
       fetchConceptRanking()
-    } else {
-      console.log('非交易时段，暂停概念排行数据更新')
-      // 不清理定时器，继续检查交易时间
     }
   }, 60000)
 }
