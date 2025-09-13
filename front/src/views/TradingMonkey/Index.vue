@@ -259,23 +259,18 @@ const startRealTimeQuotePolling = async () => {
   if (!stockMonitor.hasStocks.value) return
   
   try {
-    const isTrading = await isTradeTime('300033')
-    if (!isTrading) {
-      console.log('当前不在交易时间，跳过实时数据获取')
-      return
-    }
-    
+    // 立即获取一次数据（不管是否交易时间）
     await fetchRealTimeStockData()
     
     stockQuoteInterval = setInterval(async () => {
-      const isStillTrading = await isTradeTime('300033')
-      if (isStillTrading) {
+      const isTrading = await isTradeTime()
+      if (isTrading) {
         await fetchRealTimeStockData()
       } else {
-        console.log('交易时间结束，停止实时数据获取')
-        stopRealTimeQuotePolling()
+        console.log('非交易时段，暂停实时数据获取')
+        // 不停止定时器，继续检查交易时间
       }
-    }, 1000)
+    }, 5000) // 改为5秒，减少服务器压力
   } catch (error) {
     console.error('启动实时行情轮询失败:', error)
   }
@@ -595,24 +590,24 @@ const startMarketDataIntervals = () => {
   // 市场统计数据（30秒）
   fetchMarketStats()
   marketStatsInterval = setInterval(async () => {
-    const isTrading = await isTradeTime('000001')
+    const isTrading = await isTradeTime()
     if (isTrading) {
       fetchMarketStats()
     } else {
-      console.log('非交易时段，停止市场统计数据更新')
-      clearInterval(marketStatsInterval)
-      marketStatsInterval = null
+      console.log('非交易时段，暂停市场统计数据更新')
+      // 不清理定时器，继续检查交易时间
     }
   }, 30000)
   
   // 概念排行（1分钟）
   fetchConceptRanking()
   conceptRankingInterval = setInterval(async () => {
-    const isTrading = await isTradeTime('000001')
+    const isTrading = await isTradeTime()
     if (isTrading) {
       fetchConceptRanking()
     } else {
-      console.log('非交易时段，跳过概念排行数据更新')
+      console.log('非交易时段，暂停概念排行数据更新')
+      // 不清理定时器，继续检查交易时间
     }
   }, 60000)
 }
@@ -664,7 +659,6 @@ onMounted(async () => {
   // 获取持仓数据
   try {
     await fetchPositionData()
-    await loadLocalData() // 再次加载分析结果
     if (!localStorage.getItem('available_balance')) {
       await fetchBalanceData()
     }

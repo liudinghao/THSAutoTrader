@@ -165,7 +165,7 @@ export function useStockMonitor() {
    */
   const updateIfTradingTime = async () => {
     try {
-      const isTradingTime = await isTradeTime('300033')
+      const isTradingTime = await isTradeTime()
       if (isTradingTime) {
         return await updateRealTimeData()
       } else {

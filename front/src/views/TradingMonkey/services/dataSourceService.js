@@ -4,7 +4,7 @@
  */
 import axios from 'axios'
 import { ElMessage } from 'element-plus'
-import { getAllBlockCode } from '../../../utils/quoteApi.js'
+import { getAllStockCodes } from '../../../utils/quoteApi.js'
 
 /**
  * 集合竞价策略数据源服务类
@@ -12,45 +12,45 @@ import { getAllBlockCode } from '../../../utils/quoteApi.js'
 export class AuctionStrategyDataService {
   /**
    * 获取集合竞价策略股票数据
-   * 直接使用 getAllBlockCode 方法获取的板块代码作为集合竞价策略的股票列表
+   * 直接使用 getAllStockCodes 方法获取的股票代码作为集合竞价策略的股票列表
    */
   async getStockData() {
     try {
       console.log('开始获取集合竞价策略数据...')
       
-      // 调用 getAllBlockCode 获取所有板块代码，直接作为集合竞价策略的股票列表
-      const blockCodes = await getAllBlockCode(1)
+      // 调用 getAllStockCodes 获取所有股票代码，作为集合竞价策略的股票列表
+      const stockCodes = await getAllStockCodes(1)
       
-      if (!Array.isArray(blockCodes) || blockCodes.length === 0) {
-        throw new Error('获取到的板块代码数据为空')
+      if (!Array.isArray(stockCodes) || stockCodes.length === 0) {
+        throw new Error('获取到的股票代码数据为空')
       }
 
-      console.log(`获取到 ${blockCodes.length} 个板块代码`)
+      console.log(`获取到 ${stockCodes.length} 个股票代码`)
       
       // 为每个股票代码获取详细信息
-      const stockDataPromises = blockCodes.map(async (block) => {
+      const stockDataPromises = stockCodes.map(async (stock) => {
         try {
-          const stockDetail = await this.fetchStockDetail(block.code)
+          const stockDetail = await this.fetchStockDetail(stock.code)
           return {
-            code: block.code,
+            code: stock.code,
             name: stockDetail?.name || '--',
             price: stockDetail?.price || '--',
             changePercent: stockDetail?.changePercent || '--',
             limitUpReason: stockDetail?.limitUpReason || '--', // 涨停原因
             source: 'auction-strategy',
-            marketId: block.marketId
+            marketId: stock.marketId
           }
         } catch (error) {
-          console.warn(`获取股票 ${block.code} 详细信息失败:`, error)
+          console.warn(`获取股票 ${stock.code} 详细信息失败:`, error)
           // 获取详细信息失败时，返回基本信息
           return {
-            code: block.code,
+            code: stock.code,
             name: '--',
             price: '--',
             changePercent: '--',
             limitUpReason: '--', // 涨停原因
             source: 'auction-strategy',
-            marketId: block.marketId
+            marketId: stock.marketId
           }
         }
       })

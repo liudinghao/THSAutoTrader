@@ -682,21 +682,21 @@ export function isTradeTime(stockCode = '300033') {
 }
 
 /**
- * 获取所有板块代码
+ * 获取所有股票代码（集合竞价策略用）
  * @param {boolean} needMarket 是否需要市场信息，默认为1
- * @returns {Promise<Object[]>} 返回板块代码对象数组的Promise
+ * @returns {Promise<Object[]>} 返回股票代码对象数组的Promise
  * 返回格式示例：[{code: '002402', marketId: '33'}, {code: '002418', marketId: '33'}, ...]
  */
-export function getAllBlockCode(needMarket = 1) {
+export function getAllStockCodes(needMarket = 1) {
   return new Promise((resolve, reject) => {
     window.API.use({
       method: 'Util.getAllBlockCode',
       data: { needMarket },
       success: function (data) {
         try {
-          // 返回的是逗号分隔的板块代码字符串，需要转换为对象数组
+          // 返回的是逗号分隔的股票代码字符串，需要转换为对象数组
           const rawCodes = data.split(',').filter((code) => code.trim());
-          const blockCodes = rawCodes.map((fullCode) => {
+          const stockCodes = rawCodes.map((fullCode) => {
             const [marketId, code] = fullCode.split(':');
             return {
               code: code || '',
@@ -704,12 +704,12 @@ export function getAllBlockCode(needMarket = 1) {
             };
           });
           console.log(
-            `获取到 ${blockCodes.length} 个板块代码:`,
-            blockCodes.slice(0, 10) // 只显示前10个，避免日志过长
+            `获取到 ${stockCodes.length} 个股票代码:`,
+            stockCodes.slice(0, 10) // 只显示前10个，避免日志过长
           );
-          resolve(blockCodes);
+          resolve(stockCodes);
         } catch (error) {
-          reject(new Error(`解析板块代码失败: ${error.message}`));
+          reject(new Error(`解析股票代码失败: ${error.message}`));
         }
       },
       error: function (error) {
@@ -767,5 +767,7 @@ export function placeOrder(cmdStatus, stockCode, price = '', amount = '') {
   });
 }
 
-window.getAllBlockCode = getAllBlockCode; // for debug
+window.getAllStockCodes = getAllStockCodes; // for debug
+// 保持向后兼容性
+window.getAllBlockCode = getAllStockCodes;
 window.placeOrder = placeOrder; // for debug
