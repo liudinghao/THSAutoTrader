@@ -288,9 +288,6 @@ const startRealTimeQuotePolling = async () => {
       const isTrading = await isTradeTime()
       if (isTrading) {
         await fetchRealTimeStockData()
-      } else {
-        console.log('非交易时段，暂停实时数据获取')
-        // 不停止定时器，继续检查交易时间
       }
     }, 5000) // 改为5秒，减少服务器压力
   } catch (error) {

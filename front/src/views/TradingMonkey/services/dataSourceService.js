@@ -24,8 +24,6 @@ export class AuctionStrategyDataService {
       if (!Array.isArray(stockCodes) || stockCodes.length === 0) {
         throw new Error('获取到的股票代码数据为空')
       }
-
-      console.log(`获取到 ${stockCodes.length} 个股票代码`)
       
       // 为每个股票代码获取详细信息
       const stockDataPromises = stockCodes.map(async (stock) => {

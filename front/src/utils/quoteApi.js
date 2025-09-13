@@ -703,10 +703,6 @@ export function getAllStockCodes(needMarket = 1) {
               marketId: marketId || ''
             };
           });
-          console.log(
-            `获取到 ${stockCodes.length} 个股票代码:`,
-            stockCodes.slice(0, 10) // 只显示前10个，避免日志过长
-          );
           resolve(stockCodes);
         } catch (error) {
           reject(new Error(`解析股票代码失败: ${error.message}`));

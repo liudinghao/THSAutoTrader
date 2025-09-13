@@ -200,3 +200,48 @@ const stockMonitor = useStockMonitor()
 7. 涨停天梯 - 涨停股票追踪
 8. 数据更新 - 市场数据刷新
 9. 窗口控制调试 - 系统调试
+
+## UI/UX 规范
+
+### 数据显示规范
+
+**无数据状态显示规范**：
+- 当数据获取失败、无数据或数据为空时，应显示 `--` 而不是显示无意义的 `0`
+- `--` 表示"数据不可用"或"暂无数据"的状态，避免用户将其误解为实际数值
+- ⚠️ **重要**：`0` 是有意义的数值，不应被当作无数据处理
+- 适用场景：
+  - API 请求失败
+  - 数据源返回 null/undefined
+  - 计算结果无效
+  - 字段值为 null/undefined
+
+**正确与错误的写法对比**：
+```vue
+<!-- ❌ 错误写法 - 会将 0 误判为无数据 -->
+<span>{{ value || '--' }}</span>
+
+<!-- ✅ 正确写法 - 准确判断 null/undefined -->
+<span v-if="value !== null && value !== undefined">{{ value }}</span>
+<span v-else>--</span>
+
+<!-- ✅ 或使用计算属性 -->
+<span>{{ displayValue }}</span>
+
+computed: {
+  displayValue() {
+    // 明确检查 null 和 undefined，保留 0 值
+    return this.value !== null && this.value !== undefined ? this.value : '--'
+  }
+}
+
+<!-- ✅ 或使用三元运算符 -->
+<span>{{ (value !== null && value !== undefined) ? value : '--' }}</span>
+```
+
+**常见Bug场景**：
+- `value || '--'` 当 value 为 0 时错误显示 `--`
+- `value ? value : '--'` 同样会将 0 当作假值处理
+- 应该使用严格的 null/undefined 检查
+
+**已实现参考**：
+- `src/components/ReasonTags.vue` - 使用 `--` 表示无涨停原因数据
