@@ -127,8 +127,8 @@ const fetchData = async () => {
 const groupedStocks = computed(() => {
   const groups = {}
   stockData.value.forEach(stock => {
-    // 过滤连板：zttj_days 和 zttj_ct 相等表示连板
-    if (stock.zttj_days === stock.zttj_ct) {
+    // 过滤连板：zttj_days 和 zttj_ct 相等表示连板，且排除首板（zttj_days > 1）
+    if (stock.zttj_days === stock.zttj_ct && stock.zttj_days > 1) {
       const days = stock.zttj_days
       if (!groups[days]) {
         groups[days] = { zttj_days: days, stocks: [] }
@@ -182,58 +182,58 @@ onMounted(() => {
 
 <style scoped>
 .zt-tian-ti-new {
-  padding: 24px 0;
+  padding: 16px 0;
   background: #f5f7fa;
   min-height: 100vh;
 }
 .zt-stats-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
-  margin-bottom: 24px;
+  gap: 8px;
+  margin-bottom: 16px;
   justify-content: flex-start;
 }
 .zt-stat-tag {
   display: flex;
   align-items: center;
-  border-radius: 16px;
-  padding: 4px 16px;
-  font-size: 15px;
+  border-radius: 12px;
+  padding: 3px 12px;
+  font-size: 13px;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  min-width: 70px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+  min-width: 60px;
   justify-content: center;
 }
 .zt-stat-label {
-  margin-right: 4px;
+  margin-right: 3px;
 }
 .zt-stat-value {
-  font-size: 17px;
+  font-size: 14px;
   font-weight: bold;
 }
 .zt-tian-ti-content-new {
   background: #fff;
-  border-radius: 14px;
-  box-shadow: 0 2px 12px rgba(0,0,0,0.08);
-  padding: 0 0 24px 0;
+  border-radius: 8px;
+  box-shadow: 0 1px 6px rgba(0,0,0,0.08);
+  padding: 0 0 16px 0;
 }
 .zt-loading, .zt-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 60px 0;
+  padding: 40px 0;
   color: #909399;
-  font-size: 16px;
+  font-size: 14px;
 }
 .zt-loading-spinner {
-  width: 32px;
-  height: 32px;
-  border: 4px solid #e0e0e0;
-  border-top: 4px solid #409eff;
+  width: 24px;
+  height: 24px;
+  border: 3px solid #e0e0e0;
+  border-top: 3px solid #409eff;
   border-radius: 50%;
   animation: zt-spin 1s linear infinite;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 @keyframes zt-spin {
   0% { transform: rotate(0deg); }
@@ -242,153 +242,153 @@ onMounted(() => {
 .zt-tian-ti-table-new {
   display: flex;
   flex-direction: column;
-  gap: 32px;
-  padding: 24px 24px 0 24px;
+  gap: 20px;
+  padding: 16px 16px 0 16px;
 }
 .zt-tier-row {
   display: flex;
   align-items: flex-start;
-  gap: 18px;
+  gap: 12px;
 }
 .zt-tier-label {
-  min-width: 60px;
+  min-width: 50px;
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  font-size: 20px;
+  font-size: 16px;
   font-weight: bold;
   color: #409eff;
-  margin-top: 8px;
+  margin-top: 4px;
 }
 .zt-tier-main {
-  border-radius: 8px;
+  border-radius: 6px;
   background: #e3f2fd;
-  padding: 6px 16px;
-  font-size: 18px;
+  padding: 4px 12px;
+  font-size: 14px;
   color: #1976d2;
   font-weight: 700;
 }
 .zt-tier-stocks {
   display: flex;
   flex-wrap: wrap;
-  gap: 16px;
+  gap: 10px;
   flex: 1;
 }
 .zt-stock-card {
   background: #fff;
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-  padding: 14px 18px 10px 18px;
-  min-width: 160px;
-  max-width: 200px;
+  border-radius: 8px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  padding: 8px 12px 6px 12px;
+  min-width: 130px;
+  max-width: 160px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
   position: relative;
   transition: box-shadow 0.2s, transform 0.2s;
-  border: 1.5px solid #e3e3e3;
+  border: 1px solid #e3e3e3;
 }
 .zt-stock-card:hover {
-  box-shadow: 0 4px 16px rgba(64,158,255,0.13);
-  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 2px 8px rgba(64,158,255,0.13);
+  transform: translateY(-1px) scale(1.02);
   border-color: #90caf9;
 }
 .zt-stock-header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 .zt-stock-name {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
   color: #222;
 }
 .zt-yizi-tag {
   background: #e040fb;
   color: #fff;
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  padding: 1px 5px;
   font-weight: 600;
   margin-left: 2px;
 }
 .zt-stock-tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 .zt-reason-tag {
-  border-radius: 6px;
-  padding: 2px 10px;
-  font-size: 12px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
   color: #fff;
   font-weight: 600;
   background: #bdbdbd;
 }
 .zt-stock-meta {
   display: flex;
-  gap: 8px;
-  font-size: 12px;
+  gap: 6px;
+  font-size: 10px;
   color: #888;
 }
 .zt-stock-extra {
-  margin-top: 2px;
+  margin-top: 1px;
 }
 .zt-stock-extra-label {
-  font-size: 12px;
+  font-size: 10px;
   color: #ff9800;
   font-weight: 600;
 }
 .zt-stock-yizi {
-  border: 2px solid #e040fb;
+  border: 1.5px solid #e040fb;
 }
 @media (max-width: 900px) {
   .zt-tian-ti-table-new {
-    padding: 12px 4px 0 4px;
+    padding: 8px 4px 0 4px;
   }
   .zt-tier-stocks {
-    gap: 8px;
+    gap: 6px;
   }
   .zt-stock-card {
-    min-width: 120px;
-    max-width: 150px;
-    padding: 10px 8px 8px 8px;
+    min-width: 100px;
+    max-width: 120px;
+    padding: 6px 6px 4px 6px;
   }
   .zt-tier-label {
-    font-size: 16px;
+    font-size: 14px;
   }
 }
 @media (max-width: 600px) {
   .zt-tian-ti-new {
-    padding: 8px 0;
+    padding: 6px 0;
   }
   .zt-stats-bar {
-    gap: 6px;
-    margin-bottom: 12px;
+    gap: 4px;
+    margin-bottom: 8px;
   }
   .zt-tian-ti-table-new {
-    gap: 18px;
+    gap: 12px;
     padding: 4px 0 0 0;
   }
   .zt-tier-label {
-    min-width: 40px;
-    font-size: 13px;
-  }
-  .zt-tier-main {
-    font-size: 13px;
-    padding: 4px 8px;
-  }
-  .zt-stock-card {
-    min-width: 90px;
-    max-width: 120px;
-    padding: 6px 4px 4px 4px;
-  }
-  .zt-stock-name {
+    min-width: 35px;
     font-size: 12px;
   }
+  .zt-tier-main {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+  .zt-stock-card {
+    min-width: 80px;
+    max-width: 100px;
+    padding: 4px 3px 3px 3px;
+  }
+  .zt-stock-name {
+    font-size: 11px;
+  }
   .zt-reason-tag {
-    font-size: 10px;
-    padding: 1px 5px;
+    font-size: 9px;
+    padding: 1px 4px;
   }
 }
 </style> 
