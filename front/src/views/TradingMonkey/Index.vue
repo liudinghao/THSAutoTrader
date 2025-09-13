@@ -1,27 +1,12 @@
 <template>
   <div class="trading-monkey-container">
     <!-- 连接状态栏 -->
-    <el-card class="status-card" shadow="never">
-      <div class="status-bar">
-        <div class="status-left">
-          <span class="page-title">🐒 交易猿 - 智能自动化交易系统</span>
-          <el-tag :type="connectionStatus ? 'success' : 'danger'" size="small">
-            {{ connectionStatus ? '已连接' : '未连接' }}
-          </el-tag>
-        </div>
-        <div class="status-right">
-          <el-button 
-            size="small" 
-            circle
-            @click="checkHealth"
-            title="刷新连接状态"
-            :loading="loading.health"
-          >
-            <el-icon><Refresh /></el-icon>
-          </el-button>
-        </div>
-      </div>
-    </el-card>
+    <div class="status-bar">
+      <span class="page-title">🦍 交易猿</span>
+      <el-tag :type="connectionStatus ? 'success' : 'danger'" size="small">
+        {{ connectionStatus ? '已连接' : '未连接' }}
+      </el-tag>
+    </div>
 
     <!-- 主要功能区 -->
     <el-row :gutter="20">
@@ -87,7 +72,6 @@
 <script setup>
 import { ref, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
 
 // 导入组件
 import MarketOverview from './components/MarketOverview.vue'
@@ -685,66 +669,49 @@ onUnmounted(() => {
 
 <style scoped>
 .trading-monkey-container {
-  padding: 10px;
+  padding: 8px;
   min-height: 100vh;
   background: #f5f5f5;
 }
 
-.status-card {
-  margin-bottom: 10px;
-  border: none;
-}
-
 .status-bar {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 5px 0;
-}
-
-.status-left {
-  display: flex;
-  align-items: center;
-  gap: 15px;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: white;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
 }
 
 .page-title {
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 600;
   color: #333;
 }
 
-.status-right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
 
 @media (max-width: 1200px) {
   .trading-monkey-container {
-    padding: 5px;
+    padding: 6px;
   }
   
   .page-title {
-    font-size: 14px;
+    font-size: 13px;
   }
 }
 
 @media (max-width: 768px) {
   .status-bar {
+    padding: 6px 10px;
     flex-direction: column;
-    gap: 10px;
-    align-items: flex-start;
-  }
-  
-  .status-left {
-    flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     align-items: flex-start;
   }
   
   .page-title {
-    font-size: 14px;
+    font-size: 13px;
   }
 }
 </style>
