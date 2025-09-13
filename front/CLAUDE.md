@@ -65,7 +65,7 @@ npm install         # 安装所有依赖
 - **策略管理**: `TradingStrategy.vue` - 配置交易策略
 - **股票池**: `StockPool.vue` - 管理股票关注列表
 - **资产管理**: `AssetManagement.vue` - 投资组合跟踪
-- **多股图表**: `MultiStockChart.vue` - 实时价格可视化
+- **相似度分析**: `MultiStockChart.vue` - 股票相似度计算与可视化
 - **LLM 接口**: `LLMInterface.vue` - AI 模型调试
 - **数据更新**: `DataUpdate.vue` - 市场数据同步
 
@@ -195,7 +195,7 @@ const stockMonitor = useStockMonitor()
 2. 策略管理 - 交易策略配置
 3. 股票池 - 股票关注列表管理
 4. 资产管理 - 投资组合概览
-5. 多品种分时图 - 实时价格监控
+5. 相似度分析 - 股票相似度计算与分析
 6. LLM 调试 - AI 模型接口
 7. 涨停天梯 - 涨停股票追踪
 8. 数据更新 - 市场数据刷新

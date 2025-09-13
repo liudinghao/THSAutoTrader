@@ -51,18 +51,8 @@ const routes = [
     name: 'MultiStockChart',
     component: () => import('../views/MultiStockChart.vue'),
     meta: {
-      title: '多品种分时图',
+      title: '相似度分析',
       icon: Histogram,
-      showInNav: true,
-    },
-  },
-  {
-    path: '/llm-interface',
-    name: 'LLMInterface',
-    component: () => import('../views/LLMInterface.vue'),
-    meta: {
-      title: 'LLM调试',
-      icon: Connection,
       showInNav: true,
     },
   },
@@ -93,6 +83,16 @@ const routes = [
     meta: {
       title: 'WebSocket连接',
       icon: Link,
+      showInNav: true,
+    },
+  },
+  {
+    path: '/llm-interface',
+    name: 'LLMInterface',
+    component: () => import('../views/LLMInterface.vue'),
+    meta: {
+      title: 'LLM调试',
+      icon: Connection,
       showInNav: true,
     },
   },

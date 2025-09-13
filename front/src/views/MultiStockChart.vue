@@ -2,7 +2,7 @@
   <div class="multi-stock-chart">
     <!-- 页面头部 -->
     <div class="header">
-      <h2>可视化操盘</h2>
+      <h2>相似度分析</h2>
       <div class="header-controls">
         <el-date-picker
           v-model="currentDate"
@@ -27,36 +27,41 @@
 
     <!-- 股票选择器 -->
     <div class="stock-selector">
-      <el-select
-        v-model="newMarketId"
-        placeholder="选择市场"
-        style="width: 120px; margin-right: 10px"
-      >
-        <el-option 
-          v-for="(name, id) in marketMap" 
-          :key="id"
-          :label="name" 
-          :value="id" 
+      <div class="selector-description">
+        <span class="description-text">添加股票进行相似度分析，第一只股票为基准股票</span>
+      </div>
+      <div class="selector-controls">
+        <el-select
+          v-model="newMarketId"
+          placeholder="选择市场"
+          style="width: 120px; margin-right: 10px"
+        >
+          <el-option 
+            v-for="(name, id) in marketMap" 
+            :key="id"
+            :label="name" 
+            :value="id" 
+          />
+        </el-select>
+        <el-input
+          v-model="newStockCode"
+          placeholder="请输入股票代码"
+          style="width: 200px; margin-right: 10px"
+          @keyup.enter="addStock"
+          :loading="isSearching"
+        >
+          <template #prefix>
+            <el-icon v-if="isSearching" class="is-loading"><Loading /></el-icon>
+          </template>
+        </el-input>
+        <el-input
+          v-model="newStockName"
+          placeholder="请输入股票名称"
+          style="width: 200px; margin-right: 10px"
+          @keyup.enter="addStock"
         />
-      </el-select>
-      <el-input
-        v-model="newStockCode"
-        placeholder="请输入股票代码"
-        style="width: 200px; margin-right: 10px"
-        @keyup.enter="addStock"
-        :loading="isSearching"
-      >
-        <template #prefix>
-          <el-icon v-if="isSearching" class="is-loading"><Loading /></el-icon>
-        </template>
-      </el-input>
-      <el-input
-        v-model="newStockName"
-        placeholder="请输入股票名称"
-        style="width: 200px; margin-right: 10px"
-        @keyup.enter="addStock"
-      />
-      <el-button type="primary" @click="addStock">添加</el-button>
+        <el-button type="primary" @click="addStock">添加到分析</el-button>
+      </div>
     </div>
 
 
@@ -77,7 +82,7 @@
 
     <!-- 股票列表 -->
     <div class="stock-list">
-      <h3>相似度标的</h3>
+      <h3>相似度分析结果</h3>
       <el-table :data="stockList" style="width: 100%">
         <el-table-column prop="code" label="股票代码" width="120" />
         <el-table-column prop="name" label="股票名称" width="150" />
@@ -89,7 +94,7 @@
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="相似度" width="120">
+        <el-table-column label="与基准股相似度" width="140">
           <template #default="scope">
             <div style="display: flex; align-items: center; gap: 8px;">
               <el-progress 
@@ -109,7 +114,7 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="昨日相似度" width="120">
+        <el-table-column label="昨日相似度对比" width="140">
           <template #default="scope">
             <div style="display: flex; align-items: center; gap: 8px;">
               <el-progress 
@@ -828,6 +833,23 @@ watch(stockList, (newVal, oldVal) => {
 
 .stock-selector {
   margin-bottom: 20px;
+  padding: 16px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e9ecef;
+}
+
+.selector-description {
+  margin-bottom: 12px;
+}
+
+.description-text {
+  color: #666;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.selector-controls {
   display: flex;
   align-items: center;
 }
