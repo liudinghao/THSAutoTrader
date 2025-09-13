@@ -98,7 +98,7 @@ import TradingAdvice from './components/TradingAdvice.vue'
 
 // 导入服务
 import { TradingService } from './services/tradingService.js'
-import { getPositionData } from '../../api/asset'
+import { getPositionData, getAssetInfo } from '../../api/asset'
 import { fetchRealTimeQuote, isTradeTime, jumpToQuote } from '../../utils/quoteApi.js'
 import { performStockAnalysis } from './services/stockAnalysisService'
 import { saveAnalysisResult, getAnalysisResult, getAllAnalysisResults } from '../../utils/indexedDB'
@@ -123,7 +123,7 @@ const stockMonitor = useStockMonitor()
 // 核心数据
 const positionData = ref([])
 const analysisResults = ref({})
-const availableBalance = ref('0.00')
+const availableBalance = ref('--')
 const currentPrices = ref({})
 
 // 市场数据
@@ -179,24 +179,22 @@ const checkHealth = async () => {
 /**
  * 获取可用金额
  */
-const fetchBalanceData = async () => {
+const fetchBalanceData = async (forceRefresh = false) => {
   if (loading.value.balance) return
   
   loading.value.balance = true
   try {
-    const response = await axios.get('http://localhost:5000/balance')
+    const assetData = await getAssetInfo(forceRefresh)
     
-    if (response.data.data && response.data.data['可用金额'] !== undefined) {
-      const balance = parseFloat(response.data.data['可用金额']).toFixed(2)
+    if (assetData && assetData['可用金额'] !== undefined) {
+      const balance = parseFloat(assetData['可用金额']).toFixed(2)
       availableBalance.value = balance
-      localStorage.setItem('available_balance', JSON.stringify(response.data.data))
-      localStorage.setItem('balance_timestamp', new Date().toISOString())
     } else {
-      availableBalance.value = '0.00'
+      availableBalance.value = '--'
     }
   } catch (error) {
     console.error('获取可用金额失败:', error)
-    availableBalance.value = '0.00'
+    availableBalance.value = '--'
   } finally {
     loading.value.balance = false
   }
@@ -228,7 +226,7 @@ const fetchPositionData = async (forceRefresh = false) => {
  */
 const refreshPositionData = async () => {
   await fetchPositionData(true)
-  await fetchBalanceData()
+  await fetchBalanceData(true)
 }
 
 /**
@@ -585,16 +583,8 @@ const getPositionQuantity = (stockCode) => {
  * 加载本地数据
  */
 const loadLocalData = async () => {
-  // 加载可用金额
-  try {
-    const storedData = localStorage.getItem('available_balance')
-    if (storedData) {
-      const data = JSON.parse(storedData)
-      availableBalance.value = data['可用金额'] ? parseFloat(data['可用金额']).toFixed(2) : '0.00'
-    }
-  } catch (error) {
-    console.error('加载本地存储的可用金额失败:', error)
-  }
+  // 加载可用金额（从缓存或API）
+  await fetchBalanceData()
   
   // 加载分析结果
   try {
@@ -683,9 +673,6 @@ onMounted(async () => {
   // 获取持仓数据
   try {
     await fetchPositionData()
-    if (!localStorage.getItem('available_balance')) {
-      await fetchBalanceData()
-    }
   } catch (error) {
     console.error('持仓数据加载失败:', error)
   }

@@ -7,7 +7,12 @@
       </div>
     </template>
 
-    <el-table :data="positionData" size="small" max-height="200">
+    <el-table 
+      v-if="positionData.length > 0"
+      :data="positionData" 
+      size="small" 
+      max-height="200"
+    >
       <el-table-column prop="证券名称" label="名称" width="100">
         <template #default="scope">
           <span 
@@ -19,7 +24,7 @@
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="实际数量" label="实际数量" width="80" />
+      <el-table-column prop="股票余额" label="实际数量" width="80" />
       <el-table-column prop="可用余额" label="可用" width="80" />
       <el-table-column prop="成本价" label="成本价" width="80" />
       <el-table-column label="现价" width="80">
@@ -76,9 +81,9 @@
     </el-table>
 
     <!-- 无持仓提示 -->
-    <div v-if="positionData.length === 0" class="empty-positions">
+    <div v-if="positionData.length === 0 && !loading" class="empty-positions">
       <el-icon><Wallet /></el-icon>
-      <span>暂无持仓</span>
+      <div>暂无持仓</div>
     </div>
   </el-card>
 </template>
@@ -138,7 +143,7 @@ const getCurrentPrice = (stockCode) => {
  */
 const calculateProfitLoss = (position) => {
   const stockCode = position.证券代码
-  const quantity = parseFloat(position.实际数量 || 0)
+  const quantity = parseFloat(position.股票余额 || 0)
   const costPrice = parseFloat(position.成本价 || 0)
   
   const priceData = props.currentPrices[stockCode]
@@ -181,7 +186,7 @@ const calculateProfitLossPercent = (position) => {
  */
 const calculateMarketValue = (position) => {
   const stockCode = position.证券代码
-  const quantity = parseFloat(position.实际数量 || 0)
+  const quantity = parseFloat(position.股票余额 || 0)
   
   const priceData = props.currentPrices[stockCode]
   const currentPrice = parseFloat(priceData?.NEW || 0)

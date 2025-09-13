@@ -3,7 +3,7 @@ import { indexedDBUtil, STORE_NAMES } from '../utils/indexedDB';
 
 const BASE_URL = 'http://localhost:5000';
 
-// 获取资产信息
+// 获取资产信息（可用金额等）
 export const getAssetInfo = async (forceRefresh = false) => {
   try {
     // 如果不是强制刷新，先尝试从缓存获取数据
@@ -71,7 +71,7 @@ const filterActivePositions = (positions) => {
   if (!Array.isArray(positions)) return [];
   
   return positions.filter(position => {
-    const quantity = parseFloat(position.实际数量 || 0);
+    const quantity = parseFloat(position.股票余额 || 0);
     return quantity > 0;
   });
 };

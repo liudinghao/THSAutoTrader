@@ -47,16 +47,6 @@ const routes = [
     },
   },
   {
-    path: '/asset-management',
-    name: 'AssetManagement',
-    component: () => import('../views/AssetManagement.vue'),
-    meta: {
-      title: '资产管理',
-      icon: DataLine,
-      showInNav: true,
-    },
-  },
-  {
     path: '/multi-stock-chart',
     name: 'MultiStockChart',
     component: () => import('../views/MultiStockChart.vue'),
