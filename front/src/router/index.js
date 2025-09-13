@@ -8,6 +8,7 @@ import {
   Money,
   Histogram,
   Link,
+  VideoPlay,
 } from '@element-plus/icons-vue';
 
 const routes = [
@@ -112,6 +113,16 @@ const routes = [
     meta: {
       title: '窗口控制调试',
       icon: Monitor,
+      showInNav: true,
+    },
+  },
+  {
+    path: '/webrtc-demo',
+    name: 'WebRTC',
+    component: () => import('../views/WebRTC.vue'),
+    meta: {
+      title: 'WebRTC通信',
+      icon: VideoPlay,
       showInNav: true,
     },
   },

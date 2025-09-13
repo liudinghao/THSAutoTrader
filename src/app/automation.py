@@ -1,8 +1,11 @@
 import tkinter as tk
+import asyncio
+import threading
 from src.view.automation_view import AutomationView
 from src.view.system_tray import SystemTray
 from src.controller.automation_controller import AutomationController
 from src.service.flask_service import FlaskApp
+from src.service.signaling_server import WebRTCSignalingService
 from src.util.logger import Logger
 
 class AutomationApp:
@@ -19,6 +22,9 @@ class AutomationApp:
         
         # 初始化http服务
         self.flask_server = self.init_http_server()
+        
+        # 初始化WebRTC信令服务
+        self.signaling_service = self.init_signaling_server()
         
         # 设置窗口关闭事件处理
         self.root.protocol("WM_DELETE_WINDOW", self.on_window_close)
@@ -80,6 +86,37 @@ class AutomationApp:
         self.log(f"下单接口：http://{flask_server.host}:{flask_server.port}/xiadan?code=600000&status=1")
         self.log(f"获取持仓接口：http://{flask_server.host}:{flask_server.port}/position")
         return flask_server
+
+    def init_signaling_server(self):
+        """初始化WebRTC信令服务"""
+        signaling_service = WebRTCSignalingService(host="0.0.0.0", port=8000)
+        
+        # 在后台线程中启动信令服务器
+        def start_signaling_server():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            
+            try:
+                loop.run_until_complete(signaling_service.start_server())
+                # 保持事件循环运行
+                loop.run_forever()
+            except Exception as e:
+                self.log(f"信令服务器启动失败: {e}")
+            finally:
+                loop.close()
+        
+        # 启动信令服务器线程
+        signaling_thread = threading.Thread(
+            target=start_signaling_server,
+            daemon=True,
+            name="WebRTC-Signaling-Server"
+        )
+        signaling_thread.start()
+        
+        self.log(f"WebRTC信令服务已启动在端口 8000")
+        self.log(f"WebSocket端点: ws://0.0.0.0:8000")
+        
+        return signaling_service
 
     def log(self, message):
         """使用新的Logger类记录日志"""
