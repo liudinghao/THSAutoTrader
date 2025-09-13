@@ -36,7 +36,8 @@ export const getPositionData = async (forceRefresh = false) => {
     if (!forceRefresh) {
       const cachedData = await indexedDBUtil.getData(STORE_NAMES.POSITION_DATA);
       if (cachedData && !indexedDBUtil.isDataExpired(cachedData.timestamp)) {
-        return cachedData.data;
+        // 对缓存数据也进行过滤
+        return filterActivePositions(cachedData.data);
       }
     }
 
@@ -44,13 +45,33 @@ export const getPositionData = async (forceRefresh = false) => {
     const response = await axios.get(`${BASE_URL}/position`);
     if (response.data.status === 'success') {
       const data = response.data.data;
-      // 保存到缓存
+      
+      // 过滤掉实际数量为0的股票（已卖出的股票）
+      const filteredData = filterActivePositions(data);
+      
+      // 保存原始数据到缓存（保留完整数据）
       await indexedDBUtil.saveData(STORE_NAMES.POSITION_DATA, data);
-      return data;
+      
+      // 返回过滤后的数据
+      return filteredData;
     }
     throw new Error('接口返回状态异常');
   } catch (error) {
     console.error('获取持仓信息失败:', error);
     throw error;
   }
+};
+
+/**
+ * 过滤活跃持仓（实际数量大于0）
+ * @param {Array} positions 原始持仓数据
+ * @returns {Array} 过滤后的持仓数据
+ */
+const filterActivePositions = (positions) => {
+  if (!Array.isArray(positions)) return [];
+  
+  return positions.filter(position => {
+    const quantity = parseFloat(position.实际数量 || 0);
+    return quantity > 0;
+  });
 };

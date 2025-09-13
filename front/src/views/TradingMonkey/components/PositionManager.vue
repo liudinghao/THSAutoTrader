@@ -22,18 +22,26 @@
       <el-table-column prop="实际数量" label="实际数量" width="80" />
       <el-table-column prop="可用余额" label="可用" width="80" />
       <el-table-column prop="成本价" label="成本价" width="80" />
-      <el-table-column prop="市价" label="市价" width="80" />
-      <el-table-column prop="盈亏" label="盈亏" width="80">
+      <el-table-column label="现价" width="80">
         <template #default="scope">
-          <span :class="getValueClass('盈亏', scope.row.盈亏)">{{ scope.row.盈亏 }}</span>
+          <span>{{ getCurrentPrice(scope.row.证券代码) }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="盈亏比例(%)" label="盈亏比例" width="80">
+      <el-table-column label="盈亏" width="80">
         <template #default="scope">
-          <span :class="getValueClass('盈亏比例', scope.row['盈亏比例(%)'])">{{ scope.row['盈亏比例(%)'] }}</span>
+          <span :class="getValueClass('盈亏', calculateProfitLoss(scope.row))">{{ calculateProfitLoss(scope.row) }}</span>
         </template>
       </el-table-column>
-      <el-table-column prop="市值" label="市值" width="80" />
+      <el-table-column label="盈亏比例" width="80">
+        <template #default="scope">
+          <span :class="getValueClass('盈亏比例', calculateProfitLossPercent(scope.row))">{{ calculateProfitLossPercent(scope.row) }}%</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="市值" width="80">
+        <template #default="scope">
+          <span>{{ calculateMarketValue(scope.row) }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作建议" width="100">
         <template #default="scope">
           <el-tooltip 
@@ -99,6 +107,10 @@ const props = defineProps({
   analyzing: {
     type: Boolean,
     default: false
+  },
+  currentPrices: {
+    type: Object,
+    default: () => ({})
   }
 })
 
@@ -111,6 +123,80 @@ defineEmits([
 ])
 
 // 方法
+
+/**
+ * 获取实时现价
+ */
+const getCurrentPrice = (stockCode) => {
+  const priceData = props.currentPrices[stockCode]
+  const currentPrice = parseFloat(priceData?.NEW || 0)
+  return currentPrice > 0 ? currentPrice.toFixed(2) : '--'
+}
+
+/**
+ * 计算盈亏金额
+ */
+const calculateProfitLoss = (position) => {
+  const stockCode = position.证券代码
+  const quantity = parseFloat(position.实际数量 || 0)
+  const costPrice = parseFloat(position.成本价 || 0)
+  
+  const priceData = props.currentPrices[stockCode]
+  const currentPrice = parseFloat(priceData?.NEW || 0)
+  
+  if (currentPrice > 0 && quantity > 0 && costPrice > 0) {
+    const profitLoss = (currentPrice - costPrice) * quantity
+    return profitLoss.toFixed(2)
+  }
+  
+  return position.盈亏 || '--'
+}
+
+/**
+ * 计算盈亏比例
+ */
+const calculateProfitLossPercent = (position) => {
+  const stockCode = position.证券代码
+  const costPrice = parseFloat(position.成本价 || 0)
+  
+  const priceData = props.currentPrices[stockCode]
+  const currentPrice = parseFloat(priceData?.NEW || 0)
+  
+  if (currentPrice > 0 && costPrice > 0) {
+    const profitLossPercent = ((currentPrice - costPrice) / costPrice) * 100
+    return profitLossPercent.toFixed(2)
+  }
+  
+  // 回退到原始数据
+  const originalPercent = position['盈亏比例(%)']
+  if (originalPercent && typeof originalPercent === 'string') {
+    return originalPercent.replace('%', '')
+  }
+  
+  return '--'
+}
+
+/**
+ * 计算市值
+ */
+const calculateMarketValue = (position) => {
+  const stockCode = position.证券代码
+  const quantity = parseFloat(position.实际数量 || 0)
+  
+  const priceData = props.currentPrices[stockCode]
+  const currentPrice = parseFloat(priceData?.NEW || 0)
+  
+  if (currentPrice > 0 && quantity > 0) {
+    const marketValue = currentPrice * quantity
+    return marketValue.toFixed(2)
+  }
+  
+  return position.市值 || '--'
+}
+
+/**
+ * 获取数值样式类
+ */
 const getValueClass = (key, value) => {
   if (typeof value === 'string') {
     const numValue = parseFloat(value.replace(/[^0-9.-]/g, ''))

@@ -55,6 +55,7 @@
           :available-balance="availableBalance"
           :loading="loading.position"
           :analysis-results="analysisResults"
+          :current-prices="currentPrices"
           @refresh="refreshPositionData"
           @analyze-stock="analyzeStock"
           @show-analysis="showAnalysisResult"
@@ -211,6 +212,9 @@ const fetchPositionData = async (forceRefresh = false) => {
   try {
     const data = await getPositionData(forceRefresh)
     positionData.value = data
+    
+    // 持仓数据更新后，重新获取实时价格（包含持仓股票）
+    await fetchRealTimeStockData()
   } catch (error) {
     console.error('获取持仓信息失败:', error)
     ElMessage.error(`获取持仓信息失败: ${error.message}`)
@@ -244,9 +248,29 @@ const handleRefreshStocks = async () => {
  * 获取实时股票数据
  */
 const fetchRealTimeStockData = async () => {
-  const realTimeData = await stockMonitor.updateRealTimeData()
-  if (realTimeData) {
-    currentPrices.value = realTimeData
+  // 获取持仓股票代码列表
+  const positionStockCodes = positionData.value.map(position => position.证券代码).filter(code => code)
+  
+  // 合并监控股票和持仓股票代码，去重
+  const allStockCodes = [...new Set([
+    ...stockMonitor.stockCodes.value,
+    ...positionStockCodes
+  ])]
+  
+  // 如果没有股票代码，直接返回
+  if (allStockCodes.length === 0) return
+  
+  try {
+    // 直接获取所有股票的实时价格
+    const allRealTimeData = await fetchRealTimeQuote(allStockCodes)
+    if (allRealTimeData) {
+      currentPrices.value = allRealTimeData
+      
+      // 同时更新监控股票的显示数据
+      await stockMonitor.updateRealTimeData()
+    }
+  } catch (error) {
+    console.error('获取实时股票价格失败:', error)
   }
 }
 
