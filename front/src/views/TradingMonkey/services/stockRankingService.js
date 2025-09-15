@@ -40,8 +40,6 @@ export class StockRankingService {
 
       // 3. 按分数排序
       const sortedStocks = this.sortByScore(stocksWithScores)
-
-      console.log('股票排序完成:', sortedStocks.map(s => `${s.name}(${s.code}): ${s.score}分`))
       return sortedStocks
 
     } finally {
@@ -68,15 +66,12 @@ export class StockRankingService {
 
     for (const stock of stocks) {
       try {
-        console.log(`收集 ${stock.name}(${stock.code}) 的数据...`)
-
         // 获取K线数据
         const klineData = await this.getKlineData(stock.code, startDateStr, endDateStr)
-        console.log(`${stock.name} K线数据类型:`, typeof klineData, '长度:', Array.isArray(klineData) ? klineData.length : 'N/A')
-        
-        // 获取涨停原因
-        const ztReason = await this.getZtReason(stock.code)
-        
+
+        // 获取涨停原因（直接使用股票对象中的数据）
+        const ztReason = this.parseZtReason(stock.limitUpReason)
+
         // 检查概念匹配
         const conceptMatch = this.checkConceptMatch(ztReason, conceptRanking.topRisers)
 
@@ -110,10 +105,7 @@ export class StockRankingService {
    */
   async getKlineData(stockCode, startDate, endDate) {
     try {
-      console.log(`获取 ${stockCode} 的K线数据，时间范围: ${startDate} 到 ${endDate}`)
-      
       const response = await fetchHistoryData([stockCode], startDate, endDate)
-      console.log(`API返回数据:`, response)
       
       if (response && response[stockCode]) {
         const stockData = response[stockCode]
@@ -150,22 +142,66 @@ export class StockRankingService {
   }
 
   /**
-   * 获取涨停原因
-   * TODO: 需要实现涨停原因获取接口
+   * 解析涨停原因数据
+   * @param {string} limitUpReason - 涨停原因字符串
+   * @returns {Object|null} 解析后的涨停原因对象
    */
-  async getZtReason(stockCode) {
-    try {
-      // 这里需要调用获取涨停原因的API
-      // 暂时返回模拟数据
-      return {
-        reason: '概念热点',
-        concepts: ['人工智能', '芯片'],
-        date: getLatestTradeDate()
-      }
-    } catch (error) {
-      console.error(`获取 ${stockCode} 涨停原因失败:`, error)
+  parseZtReason(limitUpReason) {
+    if (!limitUpReason || limitUpReason === '--' || limitUpReason.trim() === '') {
       return null
     }
+
+    try {
+      // 解析涨停原因，提取概念关键词
+      // 常见格式：如 "人工智能+芯片概念" 或 "新能源汽车" 等
+      const conceptKeywords = this.extractConcepts(limitUpReason)
+
+      return {
+        reason: limitUpReason,
+        concepts: conceptKeywords,
+        date: new Date().toISOString().slice(0, 10).replace(/-/g, '')
+      }
+    } catch (error) {
+      console.error(`解析涨停原因失败:`, error)
+      return null
+    }
+  }
+
+  /**
+   * 从涨停原因中提取概念关键词
+   * @param {string} reason - 涨停原因字符串
+   * @returns {Array} 概念关键词数组
+   */
+  extractConcepts(reason) {
+    if (!reason) return []
+
+    // 常见概念关键词列表（可根据需要扩展）
+    const conceptKeywords = [
+      '人工智能', 'AI', '芯片', '半导体', '新能源', '汽车', '电池', '光伏',
+      '风电', '储能', '医药', '生物', '疫苗', '医疗', '军工', '航天',
+      '5G', '通信', '云计算', '数据中心', '互联网', '游戏', '传媒',
+      '房地产', '建筑', '基建', '钢铁', '有色', '化工', '农业',
+      '食品', '白酒', '消费', '零售', '旅游', '航空', '银行',
+      '保险', '券商', '金融', '科技', '创新', '数字经济', '元宇宙',
+      '区块链', '虚拟现实', 'VR', 'AR', '物联网', '大数据'
+    ]
+
+    // 在涨停原因中查找匹配的概念
+    const foundConcepts = conceptKeywords.filter(concept =>
+      reason.includes(concept)
+    )
+
+    // 如果没有找到预定义概念，尝试提取可能的概念词汇
+    if (foundConcepts.length === 0) {
+      // 简单的概念词提取：去掉常见的非概念词汇
+      const cleanReason = reason.replace(/[+\-()（）、，。]/g, ' ')
+      const words = cleanReason.split(/\s+/).filter(word =>
+        word.length >= 2 && !['概念', '板块', '题材', '热点', '相关'].includes(word)
+      )
+      return words.slice(0, 3) // 最多返回3个词
+    }
+
+    return foundConcepts
   }
 
   /**
