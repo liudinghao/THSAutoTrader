@@ -16,7 +16,7 @@
             :loading="isRanking"
             :disabled="!hasStocks"
           >
-            {{ isRanking ? '排序中...' : '开始排序' }}
+            {{ isRanking ? '排序中...' : '刷新' }}
           </el-button>
         </div>
       </div>
@@ -95,7 +95,7 @@
 
       <!-- 未排序状态 -->
       <div v-else class="unranked-state">
-        <el-empty description="点击'开始排序'获取智能交易建议">
+        <el-empty description="点击'刷新'获取智能交易建议">
           <template #image>
             <el-icon size="60" color="#409EFF"><Trophy /></el-icon>
           </template>
@@ -161,13 +161,23 @@ const maxScore = computed(() => {
 
 // 监听股票列表变化，自动重新排序
 watch(() => props.stocks, async (newStocks, oldStocks) => {
+  const hasNewStocks = newStocks && newStocks.length > 0
+  const hadOldStocks = oldStocks && oldStocks.length > 0
+
   // 检查是否是股票列表内容的实质性变化（而非价格等实时数据更新）
   const isStructuralChange = hasStructuralChange(newStocks, oldStocks)
 
-  if (isStructuralChange) {
+  // 情况1：从无股票到有股票，自动执行第一次排序
+  if (hasNewStocks && !hadOldStocks) {
+    console.log('📈 检测到股票数据从无到有，自动执行首次排序')
+    await handleRanking()
+    return
+  }
+
+  // 情况2：股票结构变化且之前有排序结果，自动重新排序
+  if (isStructuralChange && hasNewStocks) {
     console.log('📈 检测到股票列表结构变化，自动重新排序')
 
-    // 如果之前有排序结果，自动重新排序
     if (rankedStocks.value.length > 0) {
       await handleRanking()
     }
@@ -212,7 +222,7 @@ const hasStructuralChange = (newStocks, oldStocks) => {
 }
 
 const handleRanking = async () => {
-  console.log('🎯 排序按钮被点击!')
+  console.log('🎯 刷新排序被触发!')
   console.log('监控股票数量:', props.stocks?.length || 0)
   console.log('hasStocks:', hasStocks.value)
   console.log('概念排行数据:', props.conceptRanking)
@@ -228,7 +238,7 @@ const handleRanking = async () => {
 
   try {
     isRanking.value = true
-    ElMessage.info('开始智能排序分析...')
+    ElMessage.info('开始刷新智能排序...')
 
     // 调用排序服务
     const result = await stockRankingService.rankStocks(
@@ -239,11 +249,11 @@ const handleRanking = async () => {
     rankedStocks.value = result
     lastRankingTime.value = new Date()
 
-    ElMessage.success(`排序完成！共分析 ${result.length} 只股票`)
+    ElMessage.success(`刷新完成！共分析 ${result.length} 只股票`)
 
   } catch (error) {
     console.error('股票排序失败:', error)
-    ElMessage.error(`排序失败: ${error.message}`)
+    ElMessage.error(`刷新失败: ${error.message}`)
   } finally {
     isRanking.value = false
   }
