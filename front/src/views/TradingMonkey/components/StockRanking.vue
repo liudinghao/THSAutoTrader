@@ -7,7 +7,7 @@
           <el-tooltip content="根据概念匹配、技术形态等综合评分排序，股票变化时自动重排" placement="top">
             <el-tag size="small" type="success" effect="plain">
               <el-icon><TrendCharts /></el-icon>
-              智能评分 · 自动排序
+              智能评分
             </el-tag>
           </el-tooltip>
           <el-button 
@@ -90,21 +90,6 @@
             </div>
           </div>
 
-          <!-- 操作按钮 -->
-          <div class="action-section">
-            <el-button-group>
-              <el-button size="small" @click="$emit('jump-to-quote', stock.code)">
-                分时图
-              </el-button>
-              <el-button 
-                size="small" 
-                type="primary" 
-                @click="$emit('analyze-stock', stock)"
-              >
-                分析
-              </el-button>
-            </el-button-group>
-          </div>
         </div>
       </div>
 
@@ -159,7 +144,7 @@ const props = defineProps({
 })
 
 // Emits
-defineEmits(['jump-to-quote', 'analyze-stock'])
+defineEmits([])
 
 // 响应式数据
 const isRanking = ref(false)
@@ -472,10 +457,6 @@ const formatTime = (time) => {
   line-height: 18px;
 }
 
-/* 操作区域 */
-.action-section {
-  min-width: 100px;
-}
 
 
 /* 响应式适配 */
@@ -486,7 +467,7 @@ const formatTime = (time) => {
     gap: 8px;
   }
   
-  .rank-section, .stock-section, .score-details, .action-section {
+  .rank-section, .stock-section, .score-details {
     margin-right: 0;
     min-width: auto;
   }
