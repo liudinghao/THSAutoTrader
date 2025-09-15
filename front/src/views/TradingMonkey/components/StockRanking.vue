@@ -2,12 +2,12 @@
   <el-card class="stock-ranking-card">
     <template #header>
       <div class="card-header">
-        <span>🎯 交易计划 - 智能排序</span>
+        <span class="card-title">🎯</span>
         <div class="header-actions">
-          <el-tooltip content="根据概念匹配、技术形态等综合评分排序" placement="top">
-            <el-tag size="small" type="info" effect="plain">
+          <el-tooltip content="根据概念匹配、技术形态等综合评分排序，股票变化时自动重排" placement="top">
+            <el-tag size="small" type="success" effect="plain">
               <el-icon><TrendCharts /></el-icon>
-              智能评分
+              智能评分 · 自动排序
             </el-tag>
           </el-tooltip>
           <el-button 
@@ -70,12 +70,6 @@
           <div class="stock-section">
             <div class="stock-name">{{ stock.name }}</div>
             <div class="stock-code">{{ stock.code }}</div>
-            <div class="stock-price">
-              <span :class="getPriceChangeClass(stock.change_percent)">
-                ¥{{ formatPrice(stock.price) }}
-                {{ formatChangePercent(stock.change_percent) }}
-              </span>
-            </div>
           </div>
 
           <!-- 评分详情 -->
@@ -125,7 +119,10 @@
             • 概念匹配度（涨停原因vs热门概念）<br>
             • K线技术形态（向上趋势判断）<br>
             • 龙回头二波启动信号<br>
-            • 风险控制（60日内无跌停）
+            • 风险控制（60日内无跌停）<br><br>
+            <el-tag size="small" type="warning" effect="plain">
+              💡 排序后，股票列表变化时将自动重新排序
+            </el-tag>
           </p>
         </el-empty>
       </div>
@@ -177,15 +174,58 @@ const maxScore = computed(() => {
   return Math.max(...rankedStocks.value.map(stock => stock.score))
 })
 
-// 监听股票列表变化，清空排序结果
-watch(() => props.stocks, () => {
-  if (rankedStocks.value.length > 0) {
-    rankedStocks.value = []
-    lastRankingTime.value = null
+// 监听股票列表变化，自动重新排序
+watch(() => props.stocks, async (newStocks, oldStocks) => {
+  // 检查是否是股票列表内容的实质性变化（而非价格等实时数据更新）
+  const isStructuralChange = hasStructuralChange(newStocks, oldStocks)
+
+  if (isStructuralChange) {
+    console.log('📈 检测到股票列表结构变化，自动重新排序')
+
+    // 如果之前有排序结果，自动重新排序
+    if (rankedStocks.value.length > 0) {
+      await handleRanking()
+    }
   }
 }, { deep: true })
 
 // 方法
+
+/**
+ * 检查股票列表是否发生结构性变化
+ * @param {Array} newStocks - 新的股票列表
+ * @param {Array} oldStocks - 旧的股票列表
+ * @returns {Boolean} 是否发生结构性变化
+ */
+const hasStructuralChange = (newStocks, oldStocks) => {
+  // 如果任一为空或不是数组，按变化处理
+  if (!Array.isArray(newStocks) || !Array.isArray(oldStocks)) {
+    return true
+  }
+
+  // 数量变化
+  if (newStocks.length !== oldStocks.length) {
+    return true
+  }
+
+  // 检查股票代码列表是否相同
+  const newCodes = new Set(newStocks.map(stock => stock.code).filter(Boolean))
+  const oldCodes = new Set(oldStocks.map(stock => stock.code).filter(Boolean))
+
+  // 比较代码集合
+  if (newCodes.size !== oldCodes.size) {
+    return true
+  }
+
+  for (const code of newCodes) {
+    if (!oldCodes.has(code)) {
+      return true
+    }
+  }
+
+  return false
+}
+
 const handleRanking = async () => {
   console.log('🎯 排序按钮被点击!')
   console.log('监控股票数量:', props.stocks?.length || 0)
@@ -232,23 +272,6 @@ const getRankingClass = (index) => {
   return ''
 }
 
-const getPriceChangeClass = (changePercent) => {
-  const change = parseFloat(changePercent || 0)
-  if (change > 0) return 'text-red'
-  if (change < 0) return 'text-green'
-  return 'text-gray'
-}
-
-const formatPrice = (price) => {
-  const num = parseFloat(price || 0)
-  return num > 0 ? num.toFixed(2) : '--'
-}
-
-const formatChangePercent = (changePercent) => {
-  const num = parseFloat(changePercent || 0)
-  if (num === 0) return '0.00%'
-  return `${num > 0 ? '+' : ''}${num.toFixed(2)}%`
-}
 
 const formatTime = (time) => {
   if (!time) return ''
@@ -268,6 +291,13 @@ const formatTime = (time) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  white-space: nowrap;
 }
 
 .header-actions {
@@ -417,10 +447,6 @@ const formatTime = (time) => {
   margin-bottom: 4px;
 }
 
-.stock-price {
-  font-size: 13px;
-  font-weight: 500;
-}
 
 /* 评分详情区域 */
 .score-details {
@@ -451,18 +477,6 @@ const formatTime = (time) => {
   min-width: 100px;
 }
 
-/* 颜色类 */
-.text-red {
-  color: #f56c6c;
-}
-
-.text-green {
-  color: #67c23a;
-}
-
-.text-gray {
-  color: #909399;
-}
 
 /* 响应式适配 */
 @media (max-width: 768px) {
