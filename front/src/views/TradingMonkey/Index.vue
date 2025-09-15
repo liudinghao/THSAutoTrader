@@ -50,12 +50,12 @@
 
       <!-- 右侧列 -->
       <el-col :span="8">
-        <!-- 交易建议 -->
-        <TradingAdvice
-          :market-stats="marketStats"
-          :position-data="positionData"
-          :monitor-stocks="stockMonitor.stocks.value"
-          :current-prices="currentPrices"
+        <!-- 股票智能排序 -->
+        <StockRanking
+          :stocks="stockMonitor.stocks.value"
+          :concept-ranking="conceptRanking"
+          @jump-to-quote="jumpToStockQuote"
+          @analyze-stock="analyzeStock"
         />
       </el-col>
     </el-row>
@@ -75,10 +75,10 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 // 导入组件
 import MarketOverview from './components/MarketOverview.vue'
+import StockRanking from './components/StockRanking.vue'
 import StockMonitor from './components/StockMonitor.vue'
 import PositionManager from './components/PositionManager.vue'
 import AnalysisResultDialog from '../../components/AnalysisResultDialog.vue'
-import TradingAdvice from './components/TradingAdvice.vue'
 
 // 导入服务
 import { TradingService } from './services/tradingService.js'
@@ -289,6 +289,7 @@ const stopRealTimeQuotePolling = () => {
   }
 }
 
+
 /**
  * 获取市场统计数据
  */
@@ -396,6 +397,7 @@ const refreshMarketData = async () => {
   }
 }
 
+
 /**
  * 分析股票
  */
@@ -416,7 +418,7 @@ const analyzeStock = async (stock) => {
       months: 6,
       recentDays: 30,
       recentMinutes: 30
-    }, positionData.value, marketStats.value, conceptRanking.value)
+    }, positionData.value, conceptRanking.value)
 
     if (result.success) {
       await saveAnalysisResult(stockCode, {
@@ -555,8 +557,8 @@ const getCurrentPrice = (stockCode) => {
  * 获取持仓数量
  */
 const getPositionQuantity = (stockCode) => {
-  const position = positionData.value.find(p => (p.证券代码 || p.stockCode) === stockCode)
-  return parseInt(position?.实际数量 || position?.quantity || 0)
+  const position = positionData.value.find(p => p.证券代码 === stockCode)
+  return parseInt(position?.实际数量 || 0)
 }
 
 
@@ -588,9 +590,6 @@ const startMarketDataIntervals = () => {
     const isTrading = await isTradeTime()
     if (isTrading) {
       fetchMarketStats()
-    } else {
-      console.log('非交易时段，暂停市场统计数据更新')
-      // 不清理定时器，继续检查交易时间
     }
   }, 30000)
   

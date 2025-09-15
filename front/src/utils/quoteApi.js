@@ -785,4 +785,4 @@ window.getAllStockCodes = getAllStockCodes; // for debug
 window.getAllBlockCode = getAllStockCodes;
 window.placeOrder = placeOrder; // for debug
 window.getLatestTradeDate = getLatestTradeDate; // for debug
-window.isTradingDay = isTradingDay; // for debug
+window.fetchMinuteData = fetchMinuteData; // for debug

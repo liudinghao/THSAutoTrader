@@ -225,19 +225,12 @@ export function calculateRiskLevel(marketStats) {
  * @param {Object} indexKLineData 指数K线数据（可选）
  * @returns {string} 构建好的prompt
  */
-export function buildMarketAnalysisPrompt(marketStats, positionData, monitorStocks, currentPrices, indexKLineData = null) {
-  const { sh_index = {}, sz_index = {}, gem_index = {}, limit_up = 0, limit_down = 0, rising = 0, falling = 0 } = marketStats
-  
-  let prompt = `请分析当前A股市场整体情况并给出交易建议：
+export function buildMarketAnalysisPrompt(positionData, monitorStocks, currentPrices, indexKLineData = null) {
+  let prompt = `请分析当前交易状况并给出个性化交易建议：
 
-## 市场概况数据
-- 上证指数: ${sh_index.price} (${sh_index.change_percent}%)
-- 深证成指: ${sz_index.price} (${sz_index.change_percent}%)
-- 创业板指: ${gem_index.price} (${gem_index.change_percent}%)
-- 涨停家数: ${limit_up}
-- 跌停家数: ${limit_down}
-- 上涨家数: ${rising}
-- 下跌家数: ${falling}
+## 当前交易状况
+- 持仓股票数量: ${positionData.length}
+- 监控股票数量: ${monitorStocks.length}
 `
 
   // 添加K线技术分析数据
@@ -276,12 +269,12 @@ export function buildMarketAnalysisPrompt(marketStats, positionData, monitorStoc
  * @param {Object} currentPrices 当前股价数据
  * @returns {Promise<Object>} 分析结果
  */
-export async function performAIMarketAnalysis(marketStats, positionData, monitorStocks, currentPrices) {
+export async function performAIMarketAnalysis(positionData, monitorStocks, currentPrices) {
   try {
     // 先获取指数K线数据
     const indexKLineData = await getIndexKLineData(30) // 获取30天K线数据
     
-    const prompt = buildMarketAnalysisPrompt(marketStats, positionData, monitorStocks, currentPrices, indexKLineData)
+    const prompt = buildMarketAnalysisPrompt(positionData, monitorStocks, currentPrices, indexKLineData)
     
     // 构建消息
     const messages = [

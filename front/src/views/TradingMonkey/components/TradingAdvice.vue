@@ -65,19 +65,12 @@ import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { TrendCharts, Clock } from '@element-plus/icons-vue'
 import { 
-  generateBasicSuggestions,
-  calculateMarketStatus,
-  calculateRiskLevel,
   performAIMarketAnalysis
 } from '../services/marketAnalysisService.js'
 import { isTradingDay } from '../../../utils/quoteApi.js'
 
 // Props
 const props = defineProps({
-  marketStats: {
-    type: Object,
-    default: () => ({})
-  },
   positionData: {
     type: Array,
     default: () => []
@@ -102,18 +95,87 @@ const isCurrentlyTradingDay = ref(null) // null表示还未判断，true/false�
 const STORAGE_KEY = 'trading_advice_analysis'
 const STORAGE_EXPIRY = 4 * 60 * 60 * 1000 // 4小时过期
 
-// 计算市场状态
-const marketStatus = computed(() => calculateMarketStatus(props.marketStats))
+// 计算市场状态（简化版，不依赖marketStats）
+const marketStatus = computed(() => {
+  // 基于持仓和监控股票的简单状态判断
+  const hasPositions = props.positionData.length > 0
+  const hasMonitorStocks = props.monitorStocks.length > 0
+  
+  if (hasPositions && hasMonitorStocks) {
+    return { text: '活跃监控', type: 'success' }
+  } else if (hasMonitorStocks) {
+    return { text: '观察等待', type: 'warning' }
+  } else {
+    return { text: '空闲状态', type: 'info' }
+  }
+})
 const marketStatusText = computed(() => marketStatus.value.text)
 const marketStatusType = computed(() => marketStatus.value.type)
 
-// 计算风险等级
-const riskLevel = computed(() => calculateRiskLevel(props.marketStats))
+// 计算风险等级（简化版，不依赖marketStats）
+const riskLevel = computed(() => {
+  // 基于持仓数量和股票价格变化的简单风险评估
+  const positionCount = props.positionData.length
+  
+  if (positionCount >= 5) {
+    return { text: '高风险', type: 'danger' }
+  } else if (positionCount >= 3) {
+    return { text: '中风险', type: 'warning' }
+  } else if (positionCount >= 1) {
+    return { text: '低风险', type: 'success' }
+  } else {
+    return { text: '无风险', type: 'info' }
+  }
+})
 const riskLevelText = computed(() => riskLevel.value.text)
 const riskLevelType = computed(() => riskLevel.value.type)
 
-// 基础建议
-const basicSuggestions = computed(() => generateBasicSuggestions(props.marketStats))
+// 基础建议（简化版，不依赖marketStats）
+const basicSuggestions = computed(() => {
+  const suggestions = []
+  
+  // 基于持仓状态的建议
+  if (props.positionData.length === 0) {
+    suggestions.push({
+      icon: '📈',
+      action: '寻找机会',
+      reason: '当前无持仓，可关注优质股票',
+      type: 'buy'
+    })
+  }
+  
+  // 基于监控股票的建议
+  if (props.monitorStocks.length > 0) {
+    suggestions.push({
+      icon: '👀',
+      action: '密切关注',
+      reason: `监控中有 ${props.monitorStocks.length} 只股票`,
+      type: 'watch'
+    })
+  }
+  
+  // 基于持仓数量的建议
+  if (props.positionData.length >= 3) {
+    suggestions.push({
+      icon: '⚖️',
+      action: '控制仓位',
+      reason: '持仓较多，注意风险分散',
+      type: 'risk'
+    })
+  }
+  
+  // 默认建议
+  if (suggestions.length === 0) {
+    suggestions.push({
+      icon: '🎯',
+      action: '制定计划',
+      reason: '建议先添加监控股票制定交易计划',
+      type: 'plan'
+    })
+  }
+  
+  return suggestions
+})
 
 // 智能标题显示
 const tradingPlanTitle = computed(() => {
@@ -186,7 +248,6 @@ const handleAIAnalysis = async () => {
   
   try {
     const result = await performAIMarketAnalysis(
-      props.marketStats,
       props.positionData,
       props.monitorStocks,
       props.currentPrices

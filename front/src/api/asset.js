@@ -69,9 +69,9 @@ export const getPositionData = async (forceRefresh = false) => {
  */
 const filterActivePositions = (positions) => {
   if (!Array.isArray(positions)) return [];
-  
+
   return positions.filter(position => {
-    const quantity = parseFloat(position.股票余额 || 0);
+    const quantity = parseFloat(position.实际数量 || 0);
     return quantity > 0;
   });
 };
