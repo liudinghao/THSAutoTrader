@@ -10,6 +10,12 @@
               智能评分
             </el-tag>
           </el-tooltip>
+          <el-tooltip content="AI分析结果会缓存30分钟，避免重复分析相同数据" placement="top">
+            <el-tag size="small" type="info" effect="plain">
+              <el-icon><DataAnalysis /></el-icon>
+              智能缓存
+            </el-tag>
+          </el-tooltip>
           <el-button 
             size="small" 
             @click="handleRanking" 
@@ -45,9 +51,12 @@
       <div v-else-if="rankedStocks.length > 0" class="ranking-list">
         <div class="ranking-header">
           <span class="header-info">
-            共 {{ rankedStocks.length }} 只股票 · 
-            最高分 {{ maxScore }} 分 · 
+            共 {{ rankedStocks.length }} 只股票 ·
+            最高分 {{ maxScore }} 分 ·
             {{ formatTime(lastRankingTime) }}
+            <span v-if="hasCachedResults" class="cache-info">
+              · <el-icon><DataAnalysis /></el-icon> 使用缓存
+            </span>
           </span>
         </div>
 
@@ -75,10 +84,10 @@
           <!-- 评分详情 -->
           <div class="score-details">
             <div v-if="stock.scoreDetails && stock.scoreDetails.length > 0" class="score-tags">
-              <el-tag 
-                v-for="detail in stock.scoreDetails" 
+              <el-tag
+                v-for="detail in stock.scoreDetails"
                 :key="detail"
-                size="small" 
+                size="small"
                 type="success"
                 effect="plain"
               >
@@ -87,6 +96,20 @@
             </div>
             <div v-else class="no-score-tags">
               <el-tag size="small" type="info" effect="plain">暂无加分项</el-tag>
+            </div>
+
+            <!-- 匹配的概念显示 -->
+            <div v-if="stock.matchedConcepts && stock.matchedConcepts.length > 0" class="matched-concepts">
+              <div class="concepts-label">匹配概念：</div>
+              <el-tag
+                v-for="concept in stock.matchedConcepts"
+                :key="concept"
+                size="small"
+                type="primary"
+                effect="light"
+              >
+                {{ concept }}
+              </el-tag>
             </div>
           </div>
 
@@ -118,11 +141,12 @@
 <script setup>
 import { ref, computed, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { 
-  TrendCharts, 
-  DocumentRemove, 
-  Loading, 
-  Trophy 
+import {
+  TrendCharts,
+  DocumentRemove,
+  Loading,
+  Trophy,
+  DataAnalysis
 } from '@element-plus/icons-vue'
 import { stockRankingService } from '../services/stockRankingService.js'
 
@@ -157,6 +181,10 @@ const hasStocks = computed(() => props.stocks && props.stocks.length > 0)
 const maxScore = computed(() => {
   if (rankedStocks.value.length === 0) return 0
   return Math.max(...rankedStocks.value.map(stock => stock.score))
+})
+
+const hasCachedResults = computed(() => {
+  return rankedStocks.value.some(stock => stock.fromCache === true)
 })
 
 // 监听股票列表变化，自动重新排序
@@ -357,6 +385,16 @@ const formatTime = (time) => {
   color: #666;
 }
 
+.cache-info {
+  color: #409EFF;
+  font-weight: 500;
+}
+
+.cache-info .el-icon {
+  vertical-align: middle;
+  margin-right: 2px;
+}
+
 .ranking-item {
   display: flex;
   align-items: center;
@@ -462,6 +500,27 @@ const formatTime = (time) => {
 }
 
 .no-score-tags .el-tag {
+  font-size: 10px;
+  height: 20px;
+  line-height: 18px;
+}
+
+/* 匹配概念样式 */
+.matched-concepts {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+
+.concepts-label {
+  font-size: 10px;
+  color: #666;
+  margin-right: 4px;
+}
+
+.matched-concepts .el-tag {
   font-size: 10px;
   height: 20px;
   line-height: 18px;

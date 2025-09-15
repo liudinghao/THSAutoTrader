@@ -23,7 +23,7 @@ const API_CONFIG = {
  * @returns {Object} 配置对象
  */
 function getConfig(apiKey, model) {
-  const savedModel = model || localStorage.getItem('selected_model') || 'kimi';
+  const savedModel = model || 'kimi';
   const key = `api_key_${savedModel}`;
   const savedApiKey = apiKey || localStorage.getItem(key) || '';
 
