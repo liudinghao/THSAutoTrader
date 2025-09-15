@@ -25,7 +25,7 @@ export const API_PROVIDERS = {
     },
     defaultModel: 'moonshot-v1-8k',
     supportsTools: true,
-    apiKey: '' // 需要配置Kimi的API密钥
+    apiKey: 'sk-hvcN0sJH0SHc1LdJmrbpkBlSokVy0GwuPLA8BdLUBtJH5FGq'
   }
 }
 
@@ -42,6 +42,13 @@ export const DEFAULT_CONFIG = {
 export const REQUEST_CONFIG = {
   timeout: 30000,
   retries: 1
+}
+
+// Web搜索服务配置
+export const WEB_SEARCH_CONFIG = {
+  moonshotApiKey: 'sk-hvcN0sJH0SHc1LdJmrbpkBlSokVy0GwuPLA8BdLUBtJH5FGq',
+  enableMoonshotSearch: true,
+  searchTimeout: 30000
 }
 
 // Kimi工具配置

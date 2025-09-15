@@ -37,28 +37,6 @@
 - `src/utils/` - 工具函数
 - `src/config/` - 配置文件
 
-## 开发命令
-
-### 开发环境
-
-```bash
-npm run dev         # 启动开发服务器，端口 3000
-npm run preview     # 本地预览生产构建
-```
-
-### 构建命令
-
-```bash
-npm run build       # 生产环境构建（输出到 ../html）
-npm run build:prod  # 构建并提示完成
-```
-
-### 依赖管理
-
-```bash
-npm install         # 安装所有依赖
-```
-
 ## 核心功能
 
 - **交易自动化**: `TradingMonkey/Index.vue` - 主要交易界面

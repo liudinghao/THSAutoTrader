@@ -59,15 +59,6 @@
             </el-option>
           </el-select>
         </el-form-item>
-        <el-form-item label="API密钥">
-          <el-input v-model="config.apiKey" placeholder="请输入API密钥" show-password>
-            <template #append>
-              <el-button @click="saveApiKey" :disabled="!config.apiKey">
-                <el-icon><Check /></el-icon>
-              </el-button>
-            </template>
-          </el-input>
-        </el-form-item>
         <el-form-item label="温度">
           <el-slider v-model="config.temperature" :min="0" :max="1" :step="0.1" />
         </el-form-item>
@@ -85,8 +76,8 @@
 </template>
 
 <script>
-import { Check, Setting, Delete } from '@element-plus/icons-vue'
-import { validateApiKey, sendMessage } from '../api/llm'
+import { Setting, Delete } from '@element-plus/icons-vue'
+import { sendMessage } from '../services/llmService'
 
 // 模型配置
 const MODEL_CONFIG = {
@@ -110,14 +101,12 @@ const MODEL_CONFIG = {
 export default {
   name: 'LLMInterface',
   components: {
-    Check,
     Setting,
     Delete
   },
   data() {
     return {
       config: {
-        apiKey: '',
         model: 'kimi',
         temperature: 0.7
       },
@@ -129,12 +118,11 @@ export default {
     }
   },
   created() {
-    // 先加载模型，再加载对应的API密钥
+    // 加载保存的模型选择
     const savedModel = localStorage.getItem('selected_model')
     if (savedModel) {
       this.config.model = savedModel
     }
-    this.loadApiKey()
     this.loadHistory()
   },
   watch: {
@@ -142,16 +130,6 @@ export default {
       handler(newModel) {
         // 保存模型选择
         localStorage.setItem('selected_model', newModel)
-        // 加载新模型对应的API密钥
-        this.loadApiKey()
-      }
-    },
-    'config.apiKey': {
-      handler(newKey) {
-        // 当API密钥改变时自动保存
-        if (newKey) {
-          this.saveApiKey()
-        }
       }
     },
     messages: {
@@ -163,32 +141,6 @@ export default {
     }
   },
   methods: {
-    saveApiKey() {
-      if (!this.config.apiKey) return
-      // 保存API密钥到本地存储，使用模型名称作为key的一部分
-      const key = `api_key_${this.config.model}`
-      localStorage.setItem(key, this.config.apiKey)
-    },
-    loadApiKey() {
-      // 从本地存储加载当前模型的API密钥
-      const key = `api_key_${this.config.model}`
-      const savedKey = localStorage.getItem(key)
-      this.config.apiKey = savedKey || ''
-    },
-    async validateApiKey() {
-      if (!this.config.apiKey) {
-        this.$message.error('请输入API密钥')
-        return false
-      }
-
-      try {
-        await validateApiKey(this.config.apiKey, this.config.model)
-        return true
-      } catch (error) {
-        this.$message.error('验证API密钥失败：' + error.message)
-        return false
-      }
-    },
     scrollToBottom() {
       this.$nextTick(() => {
         const container = this.$refs.messagesContainer
@@ -216,18 +168,13 @@ export default {
     },
     async sendMessage() {
       if (!this.validateInput()) return
-      
-      // 验证API密钥
-      if (!await this.validateApiKey()) {
-        return
-      }
-      
+
       // 添加用户消息
       this.messages.push({
         role: 'user',
         content: this.userInput.trim()
       })
-      
+
       const userMessage = this.userInput
       this.userInput = ''
       this.loading = true
@@ -235,12 +182,14 @@ export default {
 
       try {
         const response = await sendMessage(
-          this.config.apiKey,
-          this.config.model,
           this.messages,
-          this.config.temperature
+          {
+            provider: this.config.model === 'kimi' ? 'kimi' : 'deepseek',
+            model: this.config.model,
+            temperature: this.config.temperature
+          }
         )
-        
+
         this.messages.push({
           role: 'assistant',
           content: response.content

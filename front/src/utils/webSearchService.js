@@ -3,6 +3,8 @@
  * 用于股票负面消息搜索
  */
 
+import { WEB_SEARCH_CONFIG } from '../services/llmConfig.js'
+
 /**
  * 网络搜索类
  */
@@ -510,12 +512,8 @@ export class WebSearch {
    * 加载配置
    */
   loadConfig() {
-    // 直接返回默认配置，不从localStorage读取
-    return {
-      moonshotApiKey: 'sk-hvcN0sJH0SHc1LdJmrbpkBlSokVy0GwuPLA8BdLUBtJH5FGq',
-      enableMoonshotSearch: true,
-      searchTimeout: 30000 // 30秒超时
-    }
+    // 从llmConfig.js读取配置
+    return WEB_SEARCH_CONFIG
   }
 
   /**
