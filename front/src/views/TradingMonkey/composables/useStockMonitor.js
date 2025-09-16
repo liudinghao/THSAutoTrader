@@ -41,8 +41,6 @@ export function useStockMonitor() {
           source: stock.source || 'auction-strategy',
           marketId: stock.marketId
         }))
-        
-        console.log(`监控股票数据加载完成: ${stocks.value.length} 只股票`)
         return true
       } else {
         ElMessage.warning('获取股票池数据格式异常')

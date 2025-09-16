@@ -33,7 +33,6 @@ export class StockRankingService {
 
     try {
       this.isRanking = true
-      console.log('开始股票智能排序，股票数量:', stocks.length)
 
       // 1. 收集所有股票的详细数据
       const stocksWithData = await this.collectStockData(stocks, conceptRanking)
@@ -54,7 +53,6 @@ export class StockRankingService {
    * 收集股票数据
    */
   async collectStockData(stocks, conceptRanking) {
-    console.log('开始收集股票数据...')
     
     // 获取60日期间：今日往前推60天
     const endDate = new Date()
@@ -83,7 +81,6 @@ export class StockRankingService {
         })
 
       } catch (error) {
-        console.error(`收集 ${stock.name} 数据失败:`, error)
         // 即使数据收集失败，也保留基本信息
         stocksWithData.push({
           ...stock,
@@ -96,7 +93,6 @@ export class StockRankingService {
     }
 
     // 批量分析概念匹配
-    console.log('开始批量分析概念匹配...')
     const stocksWithConceptMatch = await this.batchAnalyzeConceptMatch(stocksWithData, conceptRanking.topRisers)
 
     return stocksWithConceptMatch
@@ -131,14 +127,11 @@ export class StockRankingService {
         // 按日期排序（从早到晚）
         klineArray.sort((a, b) => a.date.localeCompare(b.date))
         
-        console.log(`${stockCode} 转换后的K线数据长度:`, klineArray.length)
         return klineArray
       }
       
-      console.warn(`${stockCode} 没有返回数据`)
       return null
     } catch (error) {
-      console.error(`获取 ${stockCode} K线数据失败:`, error)
       return null
     }
   }
@@ -164,7 +157,6 @@ export class StockRankingService {
         date: new Date().toISOString().slice(0, 10).replace(/-/g, '')
       }
     } catch (error) {
-      console.error(`解析涨停原因失败:`, error)
       return null
     }
   }
@@ -228,10 +220,6 @@ export class StockRankingService {
     }
 
     const finalKey = `concept_match_${Math.abs(hash)}`
-    console.log('📝 缓存键详情:')
-    console.log('  - 股票原因:', stocksKey)
-    console.log('  - 概念名称:', conceptsKey)
-    console.log('  - 最终键值:', finalKey)
 
     return finalKey
   }
@@ -242,25 +230,19 @@ export class StockRankingService {
    * @returns {Object|null} 缓存的结果或null
    */
   getCachedResult(cacheKey) {
-    console.log('🔍 查找缓存:', cacheKey)
-    console.log('📦 当前缓存大小:', this.conceptMatchCache.size)
-    console.log('🗂️ 所有缓存键:', Array.from(this.conceptMatchCache.keys()))
 
     const cached = this.conceptMatchCache.get(cacheKey)
     if (!cached) {
-      console.log('❌ 缓存未命中')
       return null
     }
 
     // 检查是否过期
     const age = Date.now() - cached.timestamp
     if (age > this.cacheExpireTime) {
-      console.log('⏰ 缓存已过期, 年龄:', Math.round(age / 1000), '秒')
       this.conceptMatchCache.delete(cacheKey)
       return null
     }
 
-    console.log('🎯 缓存命中! 年龄:', Math.round(age / 1000), '秒')
     return cached.result
   }
 
@@ -274,7 +256,6 @@ export class StockRankingService {
       result,
       timestamp: Date.now()
     })
-    console.log('💾 缓存概念匹配结果:', cacheKey)
   }
 
   /**
@@ -294,7 +275,6 @@ export class StockRankingService {
    */
   clearAllCache() {
     this.conceptMatchCache.clear()
-    console.log('🗑️ 已清空所有概念匹配缓存')
   }
 
   /**
@@ -356,9 +336,6 @@ export class StockRankingService {
       const stockReasons = validStocks.map(stock => stock.ztReason.reason)
       const cacheKey = this.generateCacheKey(stockReasons, topRisingConcepts)
 
-      console.log('🔑 生成的缓存键:', cacheKey)
-      console.log('📊 股票涨停原因:', stockReasons)
-      console.log('🏷️ 热门概念:', topRisingConcepts.map(c => c.name || c.platename))
 
       // 尝试从缓存获取结果
       const cachedResult = this.getCachedResult(cacheKey)
@@ -425,7 +402,6 @@ ${JSON.stringify(conceptData)}
 - 如果不匹配，concepts 数组为空
 `
 
-      console.log('发送概念匹配分析请求到 deepseek...')
 
       // 调用 deepseek 模型（使用新的 LLM 服务）
       const response = await sendLLMMessage(
@@ -438,7 +414,6 @@ ${JSON.stringify(conceptData)}
         }
       )
 
-      console.log('deepseek 响应:', response)
 
       // 解析响应
       let analysisResult = {}
@@ -449,11 +424,8 @@ ${JSON.stringify(conceptData)}
         if (jsonMatch) {
           analysisResult = JSON.parse(jsonMatch[0])
         } else {
-          console.warn('无法从响应中提取JSON:', responseContent)
         }
       } catch (parseError) {
-        console.error('解析 deepseek 响应失败:', parseError)
-        console.error('原始响应:', response)
       }
 
       // 缓存分析结果
@@ -471,7 +443,6 @@ ${JSON.stringify(conceptData)}
       })
 
     } catch (error) {
-      console.error('批量概念匹配分析失败:', error)
       // 发生错误时，所有股票的概念匹配都设为 false
       return stocksWithData.map(stock => ({
         ...stock,
@@ -508,10 +479,12 @@ ${JSON.stringify(conceptData)}
       let score = 0
       const scoreDetails = []
 
-      // 1. 概念匹配（权重+1）
-      if (stock.conceptMatch) {
-        score += 1
-        scoreDetails.push('概念匹配(+1)')
+      // 1. 概念匹配评分（匹配到几个概念就加几分，分数无上限）
+      if (stock.conceptMatch && stock.matchedConcepts && stock.matchedConcepts.length > 0) {
+        const conceptScore = stock.matchedConcepts.length
+        score += conceptScore
+        const conceptList = stock.matchedConcepts.join('、')
+        scoreDetails.push(`概念匹配(+${conceptScore}): ${conceptList}`)
       }
 
       // 2. 向上趋势（权重+1）
@@ -532,11 +505,16 @@ ${JSON.stringify(conceptData)}
         scoreDetails.push('无跌停历史(+1)')
       }
 
+      // 计算最大可能分数（概念匹配分数无上限，其他固定分数为4分）
+      const baseMaxScore = 4 // 向上趋势(1) + 龙回头二波(2) + 无跌停(1)
+      const conceptMaxScore = stock.matchedConcepts ? stock.matchedConcepts.length : 0
+      const maxScore = 10
+
       return {
         ...stock,
         score,
         scoreDetails,
-        maxScore: 5
+        maxScore
       }
     })
   }

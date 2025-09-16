@@ -402,7 +402,7 @@ export async function fetchRealTimeQuote(stockCodes) {
       method: 'Quote.request',
       data: {
         code: stockCodes,
-        type: ['NEW', 'ZHANGDIEFU'],
+        type: ['NEW', 'ZHANGDIEFU', 'OPEN'],
         period: 'now',
       },
       callbackName: 'onready',
@@ -412,7 +412,7 @@ export async function fetchRealTimeQuote(stockCodes) {
           method: 'Quote.getData2',
           data: {
             code: stockCodes,
-            type: ['NEW', 'ZHANGDIEFU'],
+            type: ['NEW', 'ZHANGDIEFU', 'OPEN'],
             period: 'now',
             mode: 'after',
           },
@@ -437,6 +437,7 @@ export async function fetchRealTimeQuote(stockCodes) {
                   NEW: data.NEW,
                   PRE: prePrice ? prePrice.toString() : null,
                   ZHANGDIEFU: data.ZHANGDIEFU,
+                  OPEN: data.OPEN,
                 };
               }
 
@@ -786,3 +787,4 @@ window.getAllBlockCode = getAllStockCodes;
 window.placeOrder = placeOrder; // for debug
 window.getLatestTradeDate = getLatestTradeDate; // for debug
 window.fetchMinuteData = fetchMinuteData; // for debug
+window.fetchRealTimeQuote = fetchRealTimeQuote; // for debug

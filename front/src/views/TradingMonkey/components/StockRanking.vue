@@ -98,19 +98,6 @@
               <el-tag size="small" type="info" effect="plain">暂无加分项</el-tag>
             </div>
 
-            <!-- 匹配的概念显示 -->
-            <div v-if="stock.matchedConcepts && stock.matchedConcepts.length > 0" class="matched-concepts">
-              <div class="concepts-label">匹配概念：</div>
-              <el-tag
-                v-for="concept in stock.matchedConcepts"
-                :key="concept"
-                size="small"
-                type="primary"
-                effect="light"
-              >
-                {{ concept }}
-              </el-tag>
-            </div>
           </div>
 
         </div>
@@ -197,15 +184,12 @@ watch(() => props.stocks, async (newStocks, oldStocks) => {
 
   // 情况1：从无股票到有股票，自动执行第一次排序
   if (hasNewStocks && !hadOldStocks) {
-    console.log('📈 检测到股票数据从无到有，自动执行首次排序')
     await handleRanking()
     return
   }
 
   // 情况2：股票结构变化且之前有排序结果，自动重新排序
   if (isStructuralChange && hasNewStocks) {
-    console.log('📈 检测到股票列表结构变化，自动重新排序')
-
     if (rankedStocks.value.length > 0) {
       await handleRanking()
     }
@@ -250,11 +234,6 @@ const hasStructuralChange = (newStocks, oldStocks) => {
 }
 
 const handleRanking = async () => {
-  console.log('🎯 刷新排序被触发!')
-  console.log('监控股票数量:', props.stocks?.length || 0)
-  console.log('hasStocks:', hasStocks.value)
-  console.log('概念排行数据:', props.conceptRanking)
-  
   if (!hasStocks.value) {
     ElMessage.warning('请先添加监控股票')
     return
@@ -505,26 +484,6 @@ const formatTime = (time) => {
   line-height: 18px;
 }
 
-/* 匹配概念样式 */
-.matched-concepts {
-  margin-top: 6px;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-}
-
-.concepts-label {
-  font-size: 10px;
-  color: #666;
-  margin-right: 4px;
-}
-
-.matched-concepts .el-tag {
-  font-size: 10px;
-  height: 20px;
-  line-height: 18px;
-}
 
 
 
