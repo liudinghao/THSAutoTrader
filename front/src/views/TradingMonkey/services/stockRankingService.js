@@ -484,7 +484,7 @@ ${JSON.stringify(conceptData)}
         const conceptScore = stock.matchedConcepts.length
         score += conceptScore
         const conceptList = stock.matchedConcepts.join('、')
-        scoreDetails.push(`概念匹配(+${conceptScore}): ${conceptList}`)
+        scoreDetails.push(`概念匹配(+${conceptScore}): \n${conceptList}`)
       }
 
       // 2. 向上趋势（权重+1）
