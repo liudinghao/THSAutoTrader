@@ -788,3 +788,4 @@ window.placeOrder = placeOrder; // for debug
 window.getLatestTradeDate = getLatestTradeDate; // for debug
 window.fetchMinuteData = fetchMinuteData; // for debug
 window.fetchRealTimeQuote = fetchRealTimeQuote; // for debug
+window.fetchHistoryData = fetchHistoryData;

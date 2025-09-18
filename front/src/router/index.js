@@ -9,6 +9,7 @@ import {
   Histogram,
   Link,
   VideoPlay,
+  Calendar,
 } from '@element-plus/icons-vue';
 
 const routes = [
@@ -23,6 +24,16 @@ const routes = [
     meta: {
       title: '交易猿',
       icon: Money,
+      showInNav: true,
+    },
+  },
+  {
+    path: '/backtest',
+    name: 'Backtest',
+    component: () => import('../views/Backtest.vue'),
+    meta: {
+      title: '集合竞价回测',
+      icon: Calendar,
       showInNav: true,
     },
   },

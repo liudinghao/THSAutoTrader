@@ -13,7 +13,60 @@ strategies/
 
 ## 策略列表
 
-### 1. 卖出点分析策略 (sellPointAnalysis.js)
+### 1. 竞价选股策略 (auctionPreselect.js)
+
+基于集合竞价涨跌幅进行股票筛选的策略，适用于短线交易策略：
+
+- **数据获取**：从外部API获取预选股票列表
+- **行情计算**：分批获取历史行情数据，计算竞价涨跌幅
+- **智能过滤**：根据竞价涨跌幅范围筛选股票
+- **性能优化**：批处理和错误容错机制
+
+#### 使用方法
+
+```javascript
+import { executeAuctionPreselect } from '@/strategies/auctionPreselect.js';
+
+// 执行竞价选股策略
+const result = await executeAuctionPreselect({
+  date: '2025-09-16',
+  minChange: 3,
+  maxChange: 5,
+  onProgress: (message, progress) => {
+    console.log(`[${progress}%] ${message}`)
+  }
+});
+
+console.log('策略结果:', result);
+```
+
+#### 返回结果格式
+
+```javascript
+{
+  date: "2025-09-16",
+  originalCount: 150,
+  filteredCount: 25,
+  stocks: [
+    {
+      code: "300033",
+      name: "同花顺",
+      zsz: "2000000000",
+      reason_type: "技术突破,量价齐升",
+      auction_change: 4.23,
+      close_change: 5.67,
+      next_day_return: null
+    }
+  ],
+  filterCriteria: {
+    minChange: 3,
+    maxChange: 5
+  },
+  executionTime: 5420
+}
+```
+
+### 2. 卖出点分析策略 (sellPointAnalysis.js)
 
 基于分时图量价关系的卖出点检测策略，包含以下检测逻辑：
 

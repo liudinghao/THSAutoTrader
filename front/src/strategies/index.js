@@ -5,9 +5,11 @@
 
 // 导入所有策略
 import { analyzeSellPoints } from './sellPointAnalysis.js';
+import { executeAuctionPreselect } from './auctionPreselect.js';
 
 export {
   analyzeSellPoints,
+  executeAuctionPreselect,
 };
 
 // 导入皮尔逊相关性算法
@@ -35,6 +37,7 @@ export const STRATEGY_TYPES = {
   TECHNICAL_INDICATORS: 'technical_indicators', // 技术指标
   PATTERN_RECOGNITION: 'pattern_recognition', // 形态识别
   PEARSON_CORRELATION: 'pearson_correlation', // 皮尔逊相关性分析
+  AUCTION_PRESELECT: 'auction_preselect', // 竞价选股策略
 };
 
 /**
@@ -69,6 +72,13 @@ export class StrategyManager {
         }
         return getMostSimilarStocks(stocks, dataType);
       },
+    });
+
+    // 注册竞价选股策略
+    this.strategies.set(STRATEGY_TYPES.AUCTION_PRESELECT, {
+      name: '竞价选股策略',
+      description: '基于集合竞价涨跌幅筛选股票，适用于短线交易策略',
+      execute: executeAuctionPreselect,
     });
   }
 
