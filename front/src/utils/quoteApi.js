@@ -458,7 +458,7 @@ export async function fetchRealTimeQuote(stockCodes) {
         });
       },
       error: (error) => {
-        console.error('请求实时行情数据失败:', error);
+        console.error('请求实时行情数据失败:', error, stockCodes);
         reject(error);
       },
       notClient: () => {

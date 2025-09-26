@@ -35,6 +35,9 @@
           <span>符合条件: {{ stockList.length }} 只股票</span>
           <span v-if="selectedDate">回测日期: {{ selectedDate }}</span>
           <span>过滤条件: 竞价涨跌幅 3%-5%</span>
+          <span v-if="successRate !== null" class="success-rate">
+            成功率: {{ successRate }}% ({{ successCount }}/{{ validCount }})
+          </span>
         </div>
       </div>
 
@@ -46,46 +49,27 @@
         height="600"
         class="stock-table"
       >
-        <el-table-column prop="code" label="股票代码" width="120">
+        <el-table-column prop="code" label="股票" width="100">
           <template #default="{ row }">
-            <span
-              class="clickable-stock-code"
-              @click="handleStockClick(row)"
-              title="点击跳转到分时图"
-            >
-              {{ row.code }}
-            </span>
+            <div class="stock-info" @click="handleStockClick(row)" title="点击跳转到分时图">
+              <div class="stock-code">{{ row.code }}</div>
+              <div class="stock-name">{{ row.name }}</div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="股票名称" width="150">
-          <template #default="{ row }">
-            <span
-              class="clickable-stock-name"
-              @click="handleStockClick(row)"
-              title="点击跳转到分时图"
-            >
-              {{ row.name }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="zsz" label="总市值(亿)" width="120">
+        <el-table-column prop="zsz" label="市值(亿)" width="90">
           <template #default="{ row }">
             {{ formatMarketCap(row.zsz) }}
           </template>
         </el-table-column>
-        <el-table-column prop="reason_type" label="选股原因" min-width="200">
+        <el-table-column prop="reason_type" label="选股原因" width="auto">
           <template #default="{ row }">
-            <el-tag
-              v-for="reason in parseReasons(row.reason_type)"
-              :key="reason"
-              class="reason-tag"
-              size="small"
-            >
-              {{ reason }}
-            </el-tag>
+            <div class="reason-text">
+              {{ row.reason_type || '--' }}
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="auction_change" label="竞价涨跌幅(%)" width="130">
+        <el-table-column prop="auction_change" label="竞价(%)" width="90">
           <template #default="{ row }">
             <span
               v-if="row.auction_change !== null && row.auction_change !== undefined"
@@ -96,7 +80,7 @@
             <span v-else class="no-data">--</span>
           </template>
         </el-table-column>
-        <el-table-column prop="close_change" label="当日收盘涨跌幅(%)" width="150">
+        <el-table-column prop="close_change" label="收盘涨幅" width="90">
           <template #default="{ row }">
             <span
               v-if="row.close_change !== null && row.close_change !== undefined"
@@ -107,7 +91,7 @@
             <span v-else class="no-data">--</span>
           </template>
         </el-table-column>
-        <el-table-column prop="next_day_return" label="次日开盘收益(%)" width="150">
+        <el-table-column prop="next_day_return" label="次日开盘" width="90">
           <template #default="{ row }">
             <span
               v-if="row.next_day_return !== null && row.next_day_return !== undefined"
@@ -118,7 +102,18 @@
             <span v-else class="no-data">--</span>
           </template>
         </el-table-column>
-        <el-table-column prop="date" label="最后涨停日期" width="120" />
+        <el-table-column prop="next_day_close" label="次日收盘" width="90">
+          <template #default="{ row }">
+            <span
+              v-if="row.next_day_close !== null && row.next_day_close !== undefined"
+              :class="getReturnClass(row.next_day_close)"
+            >
+              {{ row.next_day_close }}%
+            </span>
+            <span v-else class="no-data">--</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="date" label="涨停日期" width="100" />
       </el-table>
     </div>
 
@@ -133,7 +128,7 @@
 </template>
 
 <script>
-import { ref, reactive } from 'vue'
+import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { executeAuctionPreselect } from '@/strategies/auctionPreselect.js'
 import { jumpToQuote } from '@/utils/quoteApi.js'
@@ -144,6 +139,50 @@ export default {
     const selectedDate = ref('')
     const loading = ref(false)
     const stockList = ref([])
+
+    // 成功率计算 - 收盘涨幅大于竞价涨幅
+    const successStats = computed(() => {
+      if (stockList.value.length === 0) {
+        return {
+          successCount: 0,
+          validCount: 0,
+          successRate: null
+        }
+      }
+
+      // 筛选有效数据（同时有竞价涨幅和收盘涨幅的股票）
+      const validStocks = stockList.value.filter(stock =>
+        stock.auction_change !== null && stock.auction_change !== undefined &&
+        stock.close_change !== null && stock.close_change !== undefined
+      )
+
+      const validCount = validStocks.length
+      if (validCount === 0) {
+        return {
+          successCount: 0,
+          validCount: 0,
+          successRate: null
+        }
+      }
+
+      // 计算成功的股票数量（收盘涨幅 > 竞价涨幅）
+      const successCount = validStocks.filter(stock =>
+        parseFloat(stock.close_change) > parseFloat(stock.auction_change)
+      ).length
+
+      const successRate = ((successCount / validCount) * 100).toFixed(1)
+
+      return {
+        successCount,
+        validCount,
+        successRate: parseFloat(successRate)
+      }
+    })
+
+    // 提取计算属性的值供模板使用
+    const successCount = computed(() => successStats.value.successCount)
+    const validCount = computed(() => successStats.value.validCount)
+    const successRate = computed(() => successStats.value.successRate)
 
     // 获取回测数据
     const fetchBacktestData = async () => {
@@ -167,7 +206,8 @@ export default {
         // 为股票列表添加次日收益字段（close_change已经在策略中计算）
         stockList.value = result.stocks.map(stock => ({
           ...stock,
-          next_day_return: null // 预留字段，后续计算
+          next_day_return: null, // 预留字段，后续计算
+          next_day_close: null   // 次日收盘涨跌幅，预留字段
         }))
 
         ElMessage.success(
@@ -198,11 +238,6 @@ export default {
       return (num / 100000000).toFixed(2) // 转换为亿元
     }
 
-    // 解析选股原因
-    const parseReasons = (reasonType) => {
-      if (!reasonType) return []
-      return reasonType.split(',').map(reason => reason.trim()).filter(reason => reason)
-    }
 
     // 获取收益率样式类
     const getReturnClass = (returnValue) => {
@@ -233,10 +268,12 @@ export default {
       selectedDate,
       loading,
       stockList,
+      successCount,
+      validCount,
+      successRate,
       fetchBacktestData,
       onDateChange,
       formatMarketCap,
-      parseReasons,
       getReturnClass,
       handleStockClick
     }
@@ -320,9 +357,12 @@ export default {
   width: 100%;
 }
 
-.reason-tag {
-  margin-right: 6px;
-  margin-bottom: 4px;
+.reason-text {
+  word-wrap: break-word;
+  word-break: break-all;
+  line-height: 1.3;
+  color: #606266;
+  font-size: 12px;
 }
 
 .positive-return {
@@ -343,30 +383,48 @@ export default {
   color: #c0c4cc;
 }
 
-/* 可点击的股票代码和名称样式 */
-.clickable-stock-code,
-.clickable-stock-name {
+.success-rate {
   color: #409eff;
-  cursor: pointer;
-  text-decoration: none;
-  transition: all 0.2s ease;
-  display: inline-block;
-  padding: 2px 4px;
-  border-radius: 3px;
+  font-weight: 500;
 }
 
-.clickable-stock-code:hover,
-.clickable-stock-name:hover {
-  color: #66b1ff;
+/* 股票信息样式 */
+.stock-info {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.stock-info:hover {
   background-color: #ecf5ff;
-  text-decoration: underline;
   transform: translateY(-1px);
 }
 
-.clickable-stock-code:active,
-.clickable-stock-name:active {
-  color: #3a8ee6;
+.stock-info:active {
   transform: translateY(0);
+}
+
+.stock-code {
+  color: #409eff;
+  font-weight: 600;
+  font-size: 12px;
+  margin-bottom: 1px;
+}
+
+.stock-name {
+  color: #606266;
+  font-size: 11px;
+  line-height: 1.1;
+}
+
+.stock-info:hover .stock-code {
+  color: #66b1ff;
+  text-decoration: underline;
+}
+
+.stock-info:hover .stock-name {
+  color: #409eff;
 }
 
 .no-data-message,
