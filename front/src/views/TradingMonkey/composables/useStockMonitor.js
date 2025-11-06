@@ -60,11 +60,11 @@ export function useStockMonitor() {
    */
   const updateRealTimeData = async () => {
     if (loading.value.realTime || stocks.value.length === 0) return
-    
+
     loading.value.realTime = true
     try {
       const realTimeData = await fetchRealTimeQuote(stockCodes.value)
-      
+
       // 优化：使用 Map 提高查找效率
       const realTimeMap = new Map(Object.entries(realTimeData))
       

@@ -471,6 +471,7 @@ export async function fetchRealTimeQuote(stockCodes) {
 
 /**
  * 获取历史行情数据
+ * 注意：该方法不太可靠，只有切到具体股票时才能准确获取数据，不要太依赖这个方法
  * @param {string|string[]} stockCodes 股票代码，支持单个字符串或数组
  * @param {string} beginDate 开始日期，格式：YYYYMMDD，如：20250711
  * @param {string} endDate 结束日期，格式：YYYYMMDD，如：20250714
@@ -772,12 +773,69 @@ export function placeOrder(cmdStatus, stockCode, price = '', amount = '') {
 export async function isTradingDay() {
   // 获取当前日期，格式：YYYYMMDD
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, '')
-  
+
   // 获取最近一个交易日
   const latestTradeDate = await getLatestTradeDate(today)
-  
+
   // 如果今日等于最近交易日，说明今日是交易日
   return today === latestTradeDate
+}
+
+/**
+ * 基于本地时间判断是否在交易时段（包含集合竞价时间）
+ * @returns {boolean} 是否在交易时段内
+ * @description
+ * 交易时段包括：
+ * - 集合竞价：09:15-09:25
+ * - 上午交易：09:30-11:30
+ * - 下午交易：13:00-15:00
+ * 注意：此方法不判断是否为交易日，仅判断时间段
+ */
+export function isInTradingHours() {
+  const now = new Date()
+  const hours = now.getHours()
+  const minutes = now.getMinutes()
+  const currentTime = hours * 100 + minutes // 转换为数字方便比较，如 09:15 -> 915
+
+  // 集合竞价时间：09:15-09:25
+  if (currentTime >= 915 && currentTime < 925) {
+    return true
+  }
+
+  // 上午交易时间：09:30-11:30
+  if (currentTime >= 930 && currentTime < 1130) {
+    return true
+  }
+
+  // 下午交易时间：13:00-15:00
+  if (currentTime >= 1300 && currentTime < 1500) {
+    return true
+  }
+
+  return false
+}
+
+/**
+ * 判断是否在交易日的交易时段内（结合交易日判断和时段判断）
+ * @returns {Promise<boolean>} 是否在交易日的交易时段内
+ * @description
+ * 同时满足两个条件：
+ * 1. 是交易日（通过API查询交易日历）
+ * 2. 在交易时段内（包含集合竞价）
+ */
+export async function isInTradingTime() {
+  // 先判断时段，避免非交易时段时调用API
+  if (!isInTradingHours()) {
+    return false
+  }
+
+  // 再判断是否为交易日
+  try {
+    return await isTradingDay()
+  } catch (error) {
+    console.error('判断交易日失败:', error)
+    return false
+  }
 }
 
 
@@ -789,3 +847,4 @@ window.getLatestTradeDate = getLatestTradeDate; // for debug
 window.fetchMinuteData = fetchMinuteData; // for debug
 window.fetchRealTimeQuote = fetchRealTimeQuote; // for debug
 window.fetchHistoryData = fetchHistoryData;
+window.isTradeTime = isTradeTime;

@@ -26,12 +26,15 @@
           :stocks="stockMonitor.stocks.value"
           :loading="stockMonitor.loading.value.fetch"
           :analysis-results="analysisResults"
+          :selected-strategy="currentStrategy"
+          :strategy-status="strategyStatus"
           @refresh="handleRefreshStocks"
           @add-stock="handleAddStock"
           @remove-stock="handleRemoveStock"
           @analyze-stock="analyzeStock"
           @show-analysis="showAnalysisResult"
           @jump-to-quote="jumpToStockQuote"
+          @strategy-change="handleStrategyChange"
         />
 
         <!-- 持仓管理 -->
@@ -83,11 +86,12 @@ import AnalysisResultDialog from '../../components/AnalysisResultDialog.vue'
 // 导入服务
 import { TradingService } from './services/tradingService.js'
 import { getPositionData, getAssetInfo } from '../../api/asset'
-import { fetchRealTimeQuote, isTradeTime, jumpToQuote } from '../../utils/quoteApi.js'
+import { fetchRealTimeQuote, isInTradingTime, jumpToQuote } from '../../utils/quoteApi.js'
 import { performStockAnalysis } from './services/stockAnalysisService'
 import { saveAnalysisResult, getAnalysisResult, getAllAnalysisResults } from '../../utils/indexedDB'
 import { getConceptRanking } from '../../api/concept.js'
 import { useStockMonitor } from './composables/useStockMonitor.js'
+import { strategyManager } from './services/strategyManager.js'
 import axios from 'axios'
 
 // 响应式数据
@@ -141,6 +145,10 @@ let stockQuoteInterval = null
 let marketStatsInterval = null
 let conceptRankingInterval = null
 
+// 策略管理器状态
+const currentStrategy = ref('auction_preselect')
+const strategyStatus = strategyManager.strategyStatus
+
 
 // 核心方法
 
@@ -189,14 +197,14 @@ const fetchBalanceData = async (forceRefresh = false) => {
  */
 const fetchPositionData = async (forceRefresh = false) => {
   if (loading.value.position) return
-  
+
   loading.value.position = true
   try {
     const data = await getPositionData(forceRefresh)
     positionData.value = data
-    
-    // 持仓数据更新后，重新获取实时价格（包含持仓股票）
-    await fetchRealTimeStockData()
+
+    // 持仓数据更新后，获取持仓股票的实时价格
+    await fetchPositionRealTimeData()
   } catch (error) {
     console.error('获取持仓信息失败:', error)
     ElMessage.error(`获取持仓信息失败: ${error.message}`)
@@ -218,41 +226,35 @@ const refreshPositionData = async () => {
  */
 const handleRefreshStocks = async () => {
   const success = await stockMonitor.fetchStocks()
-  if (success) {
+  if (success && stockMonitor.hasStocks.value) {
     // 先获取一次实时数据（不管是否交易时间）
     await stockMonitor.updateRealTimeData()
     // 然后启动交易时间轮询
     startRealTimeQuotePolling()
+  } else if (!stockMonitor.hasStocks.value) {
+    // 如果没有股票，停止轮询
+    stopRealTimeQuotePolling()
   }
 }
 
 /**
- * 获取实时股票数据
+ * 获取持仓股票的实时价格数据（用于持仓管理显示）
  */
-const fetchRealTimeStockData = async () => {
+const fetchPositionRealTimeData = async () => {
   // 获取持仓股票代码列表
   const positionStockCodes = positionData.value.map(position => position.证券代码).filter(code => code)
-  
-  // 合并监控股票和持仓股票代码，去重
-  const allStockCodes = [...new Set([
-    ...stockMonitor.stockCodes.value,
-    ...positionStockCodes
-  ])]
-  
-  // 如果没有股票代码，直接返回
-  if (allStockCodes.length === 0) return
-  
+
+  // 如果没有持仓股票，直接返回
+  if (positionStockCodes.length === 0) return
+
   try {
-    // 直接获取所有股票的实时价格
-    const allRealTimeData = await fetchRealTimeQuote(allStockCodes)
-    if (allRealTimeData) {
-      currentPrices.value = allRealTimeData
-      
-      // 同时更新监控股票的显示数据
-      await stockMonitor.updateRealTimeData()
+    // 获取持仓股票的实时价格
+    const realTimeData = await fetchRealTimeQuote(positionStockCodes)
+    if (realTimeData) {
+      currentPrices.value = realTimeData
     }
   } catch (error) {
-    console.error('获取实时股票价格失败:', error)
+    console.error('获取持仓股票实时价格失败:', error)
   }
 }
 
@@ -260,20 +262,29 @@ const fetchRealTimeStockData = async () => {
  * 启动实时行情轮询
  */
 const startRealTimeQuotePolling = async () => {
+  // 先停止旧的轮询
   stopRealTimeQuotePolling()
-  
-  if (!stockMonitor.hasStocks.value) return
-  
+
   try {
     // 立即获取一次数据（不管是否交易时间）
-    await fetchRealTimeStockData()
-    
+    await Promise.all([
+      stockMonitor.updateRealTimeData(),  // 更新监控股票
+      fetchPositionRealTimeData()         // 更新持仓股票
+    ])
+
+    // 启动定时轮询
     stockQuoteInterval = setInterval(async () => {
-      const isTrading = await isTradeTime()
+      const isTrading = await isInTradingTime()
       if (isTrading) {
-        await fetchRealTimeStockData()
+        // 分别更新监控股票和持仓股票的实时数据
+        await Promise.all([
+          stockMonitor.updateRealTimeData(),  // 更新监控股票
+          fetchPositionRealTimeData()         // 更新持仓股票
+        ])
       }
-    }, 5000) // 改为5秒，减少服务器压力
+    }, 5000) // 每5秒轮询一次
+
+    console.log('实时行情轮询已启动')
   } catch (error) {
     console.error('启动实时行情轮询失败:', error)
   }
@@ -286,6 +297,7 @@ const stopRealTimeQuotePolling = () => {
   if (stockQuoteInterval) {
     clearInterval(stockQuoteInterval)
     stockQuoteInterval = null
+    console.log('实时行情轮询已停止')
   }
 }
 
@@ -513,16 +525,57 @@ const jumpToStockQuote = async (stockCode) => {
     ElMessage.warning('股票代码无效')
     return
   }
-  
+
   try {
     const stockCodeList = stockMonitor.stocks.value.map(stock => stock.code).filter(code => code && code !== stockCode)
     const trackingList = [stockCode, ...stockCodeList]
-    
+
     jumpToQuote(stockCode, trackingList)
     ElMessage.success(`正在跳转到 ${stockCode} 分时图`)
   } catch (error) {
     console.error('跳转分时图失败:', error)
     ElMessage.error('跳转分时图失败')
+  }
+}
+
+/**
+ * 处理策略切换
+ */
+const handleStrategyChange = (strategyId) => {
+  console.log('切换策略:', strategyId)
+  currentStrategy.value = strategyId
+
+  // 切换策略
+  strategyManager.switchStrategy(strategyId)
+
+  ElMessage.info(`已切换到: ${strategyId}`)
+}
+
+/**
+ * 策略执行回调 - 当策略自动执行时更新股票列表
+ */
+const onStrategyExecute = async (result) => {
+  console.log('策略执行完成，结果:', result)
+
+  if (result && result.stocks && Array.isArray(result.stocks)) {
+    // 更新股票监控列表
+    stockMonitor.stocks.value = result.stocks.map(stock => ({
+      code: stock.code,
+      name: stock.name,
+      price: '--',
+      changePercent: '--',
+      limitUpReason: stock.reason_type || '--',
+      source: 'strategy-auto',
+      auction_change: stock.auction_change,
+      close_change: stock.close_change
+    }))
+
+    ElMessage.success(`策略自动执行成功，筛选出 ${result.stocks.length} 只股票`)
+
+    // 获取实时行情
+    if (result.stocks.length > 0) {
+      await stockMonitor.updateRealTimeData()
+    }
   }
 }
 
@@ -587,16 +640,16 @@ const startMarketDataIntervals = () => {
   // 市场统计数据（30秒）
   fetchMarketStats()
   marketStatsInterval = setInterval(async () => {
-    const isTrading = await isTradeTime()
+    const isTrading = await isInTradingTime()
     if (isTrading) {
       fetchMarketStats()
     }
   }, 30000)
-  
+
   // 概念排行（1分钟）
   fetchConceptRanking()
   conceptRankingInterval = setInterval(async () => {
-    const isTrading = await isTradeTime()
+    const isTrading = await isInTradingTime()
     if (isTrading) {
       fetchConceptRanking()
     }
@@ -611,18 +664,21 @@ const cleanup = () => {
     clearInterval(healthCheckInterval)
     healthCheckInterval = null
   }
-  
+
   if (marketStatsInterval) {
     clearInterval(marketStatsInterval)
     marketStatsInterval = null
   }
-  
+
   if (conceptRankingInterval) {
     clearInterval(conceptRankingInterval)
     conceptRankingInterval = null
   }
-  
+
   stopRealTimeQuotePolling()
+
+  // 停止策略管理器
+  strategyManager.stop()
 }
 
 // 生命周期
@@ -643,17 +699,21 @@ onMounted(async () => {
   
   // 初始化集合竞价策略数据源
   console.log('初始化数据源: 集合竞价策略')
-  
+
   // 获取股票池数据
   await handleRefreshStocks()
-  
+
   // 获取持仓数据
   try {
     await fetchPositionData()
   } catch (error) {
     console.error('持仓数据加载失败:', error)
   }
-  
+
+  // 启动策略管理器
+  console.log('启动策略管理器...')
+  strategyManager.start(currentStrategy.value, onStrategyExecute)
+
   console.log('TradingMonkey 初始化完成')
 })
 

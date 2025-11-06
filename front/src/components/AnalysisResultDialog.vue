@@ -1,7 +1,6 @@
 <template>
   <el-dialog
     v-model="visible"
-    :title="title"
     width="800px"
     custom-class="analysis-result-dialog"
     :before-close="handleClose"

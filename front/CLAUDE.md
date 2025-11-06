@@ -173,6 +173,8 @@ const stockMonitor = useStockMonitor()
 - `getPreviousTradeDates(date, count)` - 获取最近N个交易日列表
 - `isTradingDay()` - 判断当前是否为交易日（基于真实交易日历）
 - `isTradeTime(stockCode)` - 检查是否在交易时间内（调用同花顺API，最准确）
+- `isInTradingHours()` - **新增**：基于本地时间判断是否在交易时段（包含集合竞价9:15-9:25，上午9:30-11:30，下午13:00-15:00）
+- `isInTradingTime()` - **新增**：判断是否在交易日的交易时段内（结合交易日判断和时段判断）
 
 #### 行情数据获取
 - `fetchMinuteData(stockCodes, date)` - 获取股票分时数据，支持多股票
@@ -197,7 +199,10 @@ const stockMonitor = useStockMonitor()
 - `getStocksByConceptCode(conceptCode)` - 根据概念代码获取股票列表
 
 #### 使用建议
-1. **交易时间判断**：优先使用 `isTradeTime()` 而非自己写时间判断
+1. **交易时间判断（推荐使用新方法）**：
+   - `isInTradingHours()` - 本地时间判断，无需API调用，包含集合竞价时间（9:15-9:25）
+   - `isInTradingTime()` - 结合交易日历和时段判断，最准确（推荐用于定时轮询）
+   - `isTradeTime()` - 调用同花顺API，但不包含集合竞价时间（不推荐用于需要集合竞价数据的场景）
 2. **交易日判断**：使用 `isTradingDay()` 获取准确的交易日状态
 3. **行情数据**：根据需求选择分时、实时或历史数据接口
 4. **时间处理**：使用内置的时间转换函数，格式统一

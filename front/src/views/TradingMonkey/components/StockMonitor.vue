@@ -5,7 +5,28 @@
         <div class="header-left">
           <span>👁️ 监控股票</span>
           <div class="data-source-info">
-            <el-tag size="small" type="warning">集合竞价策略</el-tag>
+            <el-select
+              :model-value="selectedStrategy"
+              @change="handleStrategyChange"
+              size="small"
+              style="width: 160px;"
+            >
+              <el-option
+                v-for="option in strategyOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              >
+                <span>{{ option.label }}</span>
+              </el-option>
+            </el-select>
+            <el-tag
+              size="small"
+              :type="strategyStatusType"
+              style="margin-left: 8px;"
+            >
+              {{ strategyStatusText }}
+            </el-tag>
           </div>
         </div>
         <div class="header-actions">
@@ -130,6 +151,7 @@
 <script setup>
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
+import { getStrategyOptions } from '@/config/strategyConfig.js'
 
 // Props
 const props = defineProps({
@@ -148,17 +170,26 @@ const props = defineProps({
   analyzing: {
     type: Boolean,
     default: false
+  },
+  selectedStrategy: {
+    type: String,
+    default: 'auction_preselect'
+  },
+  strategyStatus: {
+    type: String,
+    default: 'waiting' // waiting, running, stopped
   }
 })
 
 // Emits
 const emit = defineEmits([
-  'refresh', 
-  'analyze-stock', 
+  'refresh',
+  'analyze-stock',
   'show-analysis',
   'jump-to-quote',
   'add-stock',
-  'remove-stock'
+  'remove-stock',
+  'strategy-change'
 ])
 
 // 响应式数据
@@ -168,9 +199,38 @@ const addForm = reactive({
   name: ''
 })
 
+// 获取策略选项
+const strategyOptions = getStrategyOptions()
 
 // 计算属性 - 简化为只读
 const stocks = computed(() => props.stocks)
+
+// 策略状态样式
+const strategyStatusType = computed(() => {
+  switch (props.strategyStatus) {
+    case 'running':
+      return 'success'
+    case 'waiting':
+      return 'info'
+    case 'stopped':
+      return 'danger'
+    default:
+      return 'info'
+  }
+})
+
+const strategyStatusText = computed(() => {
+  switch (props.strategyStatus) {
+    case 'running':
+      return '运行中'
+    case 'waiting':
+      return '等待中'
+    case 'stopped':
+      return '已停止'
+    default:
+      return '未知'
+  }
+})
 
 // 方法
 
@@ -202,6 +262,10 @@ const getChangeClass = (changePercent) => {
   if (numValue > 0) return 'text-red'
   if (numValue < 0) return 'text-green'
   return ''
+}
+
+const handleStrategyChange = (strategyId) => {
+  emit('strategy-change', strategyId)
 }
 </script>
 
