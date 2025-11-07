@@ -1,14 +1,62 @@
 import os
+import threading
+import time
+import pytesseract
+from PIL import Image
 from src.util.logger import Logger
 from src.service.window_service import WindowService
 from src.models.app_model import AppModel
-import time
 
 class PositionService:
+    # 类级别的OCR初始化标志和锁
+    _ocr_warmed_up = False
+    _ocr_lock = threading.Lock()
+
     def __init__(self):
         self.window_service = WindowService()
         self.model = AppModel()
         self.logger = Logger()
+
+        # 设置tesseract路径(快速操作，不耗时)
+        self._setup_tesseract_path()
+
+        # 启动后台线程进行OCR预热(不阻塞主线程)
+        # 注意：必须在所有初始化完成后再启动线程
+        if not PositionService._ocr_warmed_up:
+            # 使用lambda确保传递完整初始化后的self
+            threading.Thread(target=lambda: self._warmup_ocr(), daemon=True).start()
+
+    def _setup_tesseract_path(self):
+        """设置tesseract路径（快速操作）"""
+        try:
+            tesseract_dir = self.model.get_tesseract_dir()
+            pytesseract.pytesseract.tesseract_cmd = os.path.join(tesseract_dir, "tesseract.exe")
+            self.logger.add_log(f"Tesseract路径已设置: {pytesseract.pytesseract.tesseract_cmd}")
+        except Exception as e:
+            self.logger.add_log(f"设置tesseract路径失败: {str(e)}")
+
+    def _warmup_ocr(self):
+        """后台预热OCR引擎（耗时操作）"""
+        with PositionService._ocr_lock:
+            if PositionService._ocr_warmed_up:
+                return
+
+            try:
+                self.logger.add_log("开始OCR引擎预热...")
+
+                # 创建一个小的测试图片(10x10白色图片)
+                test_image = Image.new('RGB', (10, 10), color='white')
+
+                # 执行一次OCR操作进行预热
+                pytesseract.image_to_string(test_image, config='--psm 6 digits')
+
+                PositionService._ocr_warmed_up = True
+                self.logger.add_log("OCR引擎预热完成")
+            except Exception as e:
+                self.logger.add_log(f"OCR预热失败: {str(e)}")
+                # 打印详细的异常信息用于调试
+                import traceback
+                self.logger.add_log(f"详细错误: {traceback.format_exc()}")
 
     def _get_captcha_image_path(self) -> str:
         """获取验证码图片保存路径"""
@@ -120,15 +168,10 @@ class PositionService:
     def _recognize_image_with_ocr(self, image_path: str) -> str:
         """使用OCR识别图片中的文字"""
         try:
-            import pytesseract
-            from PIL import Image
-            import os
-            # 获取程序根目录并设置tesseract路径
-            tesseract_dir = self.model.get_tesseract_dir()
-            pytesseract.pytesseract.tesseract_cmd = os.path.join(tesseract_dir, "tesseract.exe")
             # 打开图片
             image = Image.open(image_path)
             # 识别图片中的文字，只识别数字
+            # tesseract路径已在__init__中设置，无需重复设置
             ocr_text = pytesseract.image_to_string(image, config='--psm 6 digits')
             # 清理字符串，只保留数字
             ocr_text = self._clean_digits(ocr_text)

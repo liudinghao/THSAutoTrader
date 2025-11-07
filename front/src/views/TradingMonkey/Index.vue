@@ -311,7 +311,7 @@ const fetchMarketStats = async () => {
   loading.value.marketStats = true
   try {
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '')
-    const marketResponse = await axios.get(`/api/market/overview/distribution/v3?date=${today}`)
+    const marketResponse = await axios.get(`http://localhost:5000/proxy/zx.10jqka.com.cn/marketinfo/overview/distribution/v3?date=${today}`)
 
     if (marketResponse.data && marketResponse.data.result) {
       const result = marketResponse.data.result

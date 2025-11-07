@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response
 from flask_cors import CORS
 import threading
 from src.util.logger import Logger
@@ -6,7 +6,12 @@ import time
 import os
 import sys
 import ctypes
+import requests
+import urllib3
 from src.service.window_service import WindowService
+
+# 禁用SSL证书验证警告
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 class FlaskApp:
     def __init__(self, host='0.0.0.0', port=5000, controller=None):
@@ -217,7 +222,56 @@ class FlaskApp:
                 self.logger.add_log(f"批量撤单失败: {str(e)}")
                 return jsonify({"status": "error", "message": f"批量撤单失败: {str(e)}"})
 
-        
+        # 通用代理接口
+        @self.app.route('/proxy/<path:url>', methods=['GET', 'POST', 'PUT', 'DELETE'])
+        def proxy(url):
+            """
+            通用代理接口,转发请求到目标服务器
+            前端调用: http://localhost:5000/proxy/basic.10jqka.com.cn/mapp/300033/stock_base_info.json
+            实际转发: https://basic.10jqka.com.cn/mapp/300033/stock_base_info.json
+            """
+            try:
+                # 构建目标URL - 默认使用https协议
+                target_url = f"https://{url}"
+
+                # 保留原始查询参数
+                if request.query_string:
+                    target_url += f"?{request.query_string.decode('utf-8')}"
+
+                # 准备请求头,直接使用客户端传来的请求头,仅移除Host头避免冲突
+                headers = {key: value for key, value in request.headers if key.lower() != 'host'}
+
+                # 根据请求方法转发
+                if request.method == 'GET':
+                    resp = requests.get(target_url, headers=headers, timeout=10, verify=False)
+                elif request.method == 'POST':
+                    resp = requests.post(target_url, headers=headers, data=request.get_data(), timeout=10, verify=False)
+                elif request.method == 'PUT':
+                    resp = requests.put(target_url, headers=headers, data=request.get_data(), timeout=10, verify=False)
+                elif request.method == 'DELETE':
+                    resp = requests.delete(target_url, headers=headers, timeout=10, verify=False)
+
+                # 记录日志
+                self.logger.add_log(f"代理请求成功: {target_url} -> {resp.status_code}")
+
+                # 构建响应头,排除某些不应该转发的头
+                excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+                response_headers = [(name, value) for name, value in resp.raw.headers.items()
+                                   if name.lower() not in excluded_headers]
+
+                # 返回代理响应
+                return Response(resp.content, resp.status_code, response_headers)
+
+            except requests.exceptions.Timeout:
+                self.logger.add_log(f"代理请求超时: {url}")
+                return jsonify({"status": "error", "message": "请求超时"}), 504
+            except requests.exceptions.RequestException as e:
+                self.logger.add_log(f"代理请求失败: {url}, 错误: {str(e)}")
+                return jsonify({"status": "error", "message": f"代理请求失败: {str(e)}"}), 500
+            except Exception as e:
+                self.logger.add_log(f"代理处理异常: {url}, 错误: {str(e)}")
+                return jsonify({"status": "error", "message": f"代理处理异常: {str(e)}"}), 500
+
         # 通用静态资源路由
         @self.app.route('/<path:filename>')
         def static_files(filename):

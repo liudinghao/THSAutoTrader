@@ -76,7 +76,7 @@ export const getAllConceptCodes = async () => {
 export const getConceptRanking = async () => {
   try {
     const response = await axios.get(
-      'https://zx.10jqka.com.cn/hotblock/proxy/block/platerankinfo',
+      'http://localhost:5000/proxy/zx.10jqka.com.cn/hotblock/proxy/block/platerankinfo',
       {
         params: {
           platetype: 'all',
