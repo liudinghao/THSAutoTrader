@@ -105,7 +105,12 @@ class PositionService:
         #点击下窗口(达到聚焦效果，否则快捷键会失效)
         window_result.click_input()
 
-        time.sleep(0.5)
+        time.sleep(0.3)
+
+        # 先刷新数据，确保获取最新持仓信息
+        self.window_service.send_key('F5')
+        time.sleep(0.3)
+
         # 快捷键操作
         self.window_service.send_key('F4')
 
@@ -234,7 +239,11 @@ class PositionService:
         
         #点击下窗口(达到聚焦效果，否则快捷键会失效)
         window_result.click_input()
-        time.sleep(0.5)
+        time.sleep(0.3)
+
+        # 先刷新数据，确保获取最新资金信息
+        self.window_service.send_key('F5')
+        time.sleep(0.3)
 
         # 快捷键操作
         self.window_service.send_key('F4')

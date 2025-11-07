@@ -15,11 +15,24 @@ class TradingService:
         try:
             trading_path = self.model.get_trading_app()
             self.window_service.activate_window(trading_path)
+
+            # 获取目标窗口
+            window = self.window_service.get_target_window({'title': '网上股票交易系统5.0'})
+
+            # 点击窗口达到聚焦效果，否则快捷键会失效
+            window.click_input()
+            time.sleep(0.3)
+
+            # 先刷新数据，确保获取最新委托信息
+            self.window_service.send_key('F5')
+            time.sleep(0.3)
+
             # 使用F3快捷键打开委托撤单界面
             self.window_service.send_key('F3')
             self.logger.add_log("已打开委托撤单界面")
             time.sleep(0.1)
-            window = self.window_service.get_target_window({'title': '网上股票交易系统5.0'})
+
+            # 点击批量撤单按钮
             self.window_service.click_element(window, 30001)
             
             self.logger.add_log("批量撤单操作完成")
