@@ -207,7 +207,7 @@ const fetchPositionData = async (forceRefresh = false) => {
     await fetchPositionRealTimeData()
   } catch (error) {
     console.error('获取持仓信息失败:', error)
-    ElMessage.error(`获取持仓信息失败: ${error.message}`)
+    ElMessage.error('获取持仓信息失败: 下单委托程序未打开')
   } finally {
     loading.value.position = false
   }

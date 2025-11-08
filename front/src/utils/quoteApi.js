@@ -531,7 +531,6 @@ export async function fetchHistoryData(stockCodes, beginDate, endDate) {
           success: function (data) {
             try {
               const parsedData = JSON.parse(data);
-              console.log('fetchHistoryData: 获取历史数据完成', parsedData);
               resolve(parsedData);
             } catch (error) {
               console.error('解析历史数据失败:', error);

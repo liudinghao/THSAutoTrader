@@ -4,21 +4,15 @@
       <div class="card-header">
         <span class="card-title">🎯</span>
         <div class="header-actions">
-          <el-tooltip content="根据概念匹配、技术形态等综合评分排序，股票变化时自动重排" placement="top">
+          <el-tooltip content="AI综合分析概念匹配、量价关系、技术形态，给出0-100分评分" placement="top">
             <el-tag size="small" type="success" effect="plain">
               <el-icon><TrendCharts /></el-icon>
-              智能评分
+              AI智能评分
             </el-tag>
           </el-tooltip>
-          <el-tooltip content="AI分析结果会缓存30分钟，避免重复分析相同数据" placement="top">
-            <el-tag size="small" type="info" effect="plain">
-              <el-icon><DataAnalysis /></el-icon>
-              智能缓存
-            </el-tag>
-          </el-tooltip>
-          <el-button 
-            size="small" 
-            @click="handleRanking" 
+          <el-button
+            size="small"
+            @click="handleRanking(true)"
             :loading="isRanking"
             :disabled="!hasStocks"
           >
@@ -60,44 +54,35 @@
           </span>
         </div>
 
-        <div 
-          v-for="(stock, index) in rankedStocks" 
+        <div
+          v-for="(stock, index) in rankedStocks"
           :key="stock.code"
           class="ranking-item"
           :class="getRankingClass(index)"
         >
-          <!-- 排名和分数 -->
-          <div class="rank-section">
-            <div class="rank-number">{{ index + 1 }}</div>
+          <!-- 第一行：分数 + 股票信息 -->
+          <div class="ranking-header-row">
+            <!-- 分数 -->
             <div class="score-section">
-              <div class="score-value">{{ stock.score }}</div>
-              <div class="score-max">/ {{ stock.maxScore }}</div>
+              <span class="score-value">{{ stock.score }}</span>
+              <span class="score-max">/ {{ stock.maxScore }}</span>
+            </div>
+
+            <!-- 股票信息 -->
+            <div class="stock-section">
+              <span class="stock-name">{{ stock.name }}</span>
+              <span class="stock-code">{{ stock.code }}</span>
             </div>
           </div>
 
-          <!-- 股票信息 -->
-          <div class="stock-section">
-            <div class="stock-name">{{ stock.name }}</div>
-            <div class="stock-code">{{ stock.code }}</div>
-          </div>
-
-          <!-- 评分详情 -->
-          <div class="score-details">
-            <div v-if="stock.scoreDetails && stock.scoreDetails.length > 0" class="score-tags">
-              <el-tag
-                v-for="detail in stock.scoreDetails"
-                :key="detail"
-                size="small"
-                type="success"
-                effect="plain"
-              >
-                {{ detail }}
-              </el-tag>
+          <!-- 第二行：AI评分详情 -->
+          <div class="ranking-detail-row">
+            <div v-if="stock.scoreReason" class="score-reason">
+              <div class="reason-text">{{ formatScoreReason(stock.scoreReason) }}</div>
             </div>
-            <div v-else class="no-score-tags">
-              <el-tag size="small" type="info" effect="plain">暂无加分项</el-tag>
+            <div v-else class="no-score-reason">
+              <span class="no-score-text">暂无评分</span>
             </div>
-
           </div>
 
         </div>
@@ -110,13 +95,13 @@
             <el-icon size="60" color="#409EFF"><Trophy /></el-icon>
           </template>
           <p class="unranked-text">
-            将根据以下维度进行评分：<br>
-            • 概念匹配度（涨停原因vs热门概念）<br>
-            • K线技术形态（向上趋势判断）<br>
-            • 龙回头二波启动信号<br>
-            • 风险控制（60日内无跌停）<br><br>
+            AI将根据以下维度进行综合评分（0-100分）：<br>
+            ✅ 概念匹配度（0-40分）：题材热度与涨停原因匹配<br>
+            ✅ 量价健康度（0-40分）：超短线量价关系分析<br>
+            ✅ 技术形态加分（0-20分）：龙回头、突破等形态<br>
+            ⚠️ 风险减分项：跌停、破位、出货等信号扣分<br><br>
             <el-tag size="small" type="warning" effect="plain">
-              💡 排序后，股票列表变化时将自动重新排序
+              🤖 AI严格执行减分项，宁可错过不接盘高风险股票
             </el-tag>
           </p>
         </el-empty>
@@ -188,11 +173,10 @@ watch(() => props.stocks, async (newStocks, oldStocks) => {
     return
   }
 
-  // 情况2：股票结构变化且之前有排序结果，自动重新排序
+  // 情况2：股票结构变化（添加/删除股票），自动重新排序
   if (isStructuralChange && hasNewStocks) {
-    if (rankedStocks.value.length > 0) {
-      await handleRanking()
-    }
+    console.log('[StockRanking] 检测到股票列表结构变化，自动触发AI分析排序')
+    await handleRanking()
   }
 }, { deep: true })
 
@@ -233,7 +217,7 @@ const hasStructuralChange = (newStocks, oldStocks) => {
   return false
 }
 
-const handleRanking = async () => {
+const handleRanking = async (forceRefresh = false) => {
   if (!hasStocks.value) {
     ElMessage.warning('请先添加监控股票')
     return
@@ -245,12 +229,17 @@ const handleRanking = async () => {
 
   try {
     isRanking.value = true
-    ElMessage.info('开始刷新智能排序...')
+    if (forceRefresh) {
+      ElMessage.info('强制刷新智能排序（跳过缓存）...')
+    } else {
+      ElMessage.info('开始刷新智能排序...')
+    }
 
     // 调用排序服务
     const result = await stockRankingService.rankStocks(
-      props.stocks, 
-      props.conceptRanking
+      props.stocks,
+      props.conceptRanking,
+      forceRefresh  // 传递强制刷新参数
     )
 
     rankedStocks.value = result
@@ -274,12 +263,17 @@ const getRankingClass = (index) => {
   return ''
 }
 
+const formatScoreReason = (reason) => {
+  if (!reason) return ''
+  // AI统一用 + 连接所有项（包括减分项），直接替换为换行符即可
+  return reason.replace(/\s*\+\s*/g, '\n').trim()
+}
 
 const formatTime = (time) => {
   if (!time) return ''
-  return time.toLocaleTimeString('zh-CN', { 
-    hour: '2-digit', 
-    minute: '2-digit' 
+  return time.toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit'
   })
 }
 </script>
@@ -376,13 +370,14 @@ const formatTime = (time) => {
 
 .ranking-item {
   display: flex;
-  align-items: center;
-  padding: 12px;
+  flex-direction: column;
+  padding: 10px 12px;
   background: white;
   border: 1px solid #ebeef5;
   border-radius: 6px;
   margin-bottom: 8px;
   transition: all 0.3s ease;
+  gap: 8px;
 }
 
 .ranking-item:hover {
@@ -406,82 +401,85 @@ const formatTime = (time) => {
   background: linear-gradient(90deg, #FDF5E6 0%, #FFFFFF 100%);
 }
 
-/* 排名区域 */
-.rank-section {
+/* 第一行：分数 + 股票信息 */
+.ranking-header-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  margin-right: 12px;
-  min-width: 50px;
-}
-
-.rank-number {
-  font-size: 18px;
-  font-weight: bold;
-  color: #333;
-  line-height: 1;
+  gap: 12px;
 }
 
 .score-section {
   display: flex;
   align-items: baseline;
-  margin-top: 2px;
+  gap: 2px;
+  min-width: 70px;
 }
 
 .score-value {
-  font-size: 16px;
+  font-size: 20px;
   font-weight: bold;
   color: #409EFF;
 }
 
 .score-max {
-  font-size: 12px;
+  font-size: 13px;
   color: #999;
-  margin-left: 2px;
 }
 
 /* 股票信息区域 */
 .stock-section {
   flex: 1;
-  margin-right: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
 }
 
 .stock-name {
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
   color: #333;
-  margin-bottom: 2px;
 }
 
 .stock-code {
   font-size: 12px;
-  color: #666;
-  margin-bottom: 4px;
+  color: #909399;
 }
 
-
-/* 评分详情区域 */
-.score-details {
-  margin-right: 12px;
-  min-width: 120px;
+/* 第二行：评分详情 */
+.ranking-detail-row {
+  width: 100%;
 }
 
-.score-tags {
+/* AI评分理由显示 */
+.score-reason {
+  width: 100%;
+}
+
+.reason-text {
+  font-size: 12px;
+  line-height: 1.8;
+  color: #606266;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 6px;
+  word-break: break-word;
+  white-space: pre-line; /* 保留换行符，自动将 + 换行 */
+}
+
+/* 无评分状态 */
+.no-score-reason {
+  width: 100%;
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
+  align-items: center;
 }
 
-.score-tags .el-tag {
-  font-size: 10px;
-  height: 20px;
-  line-height: 18px;
-}
-
-.no-score-tags .el-tag {
-  font-size: 10px;
-  height: 20px;
-  line-height: 18px;
+.no-score-text {
+  font-size: 12px;
+  color: #909399;
+  padding: 8px 12px;
+  background: #f5f7fa;
+  border-radius: 6px;
+  border-left: 3px solid #dcdfe6;
 }
 
 
@@ -489,25 +487,31 @@ const formatTime = (time) => {
 
 /* 响应式适配 */
 @media (max-width: 768px) {
-  .ranking-item {
-    flex-direction: column;
-    align-items: stretch;
-    gap: 8px;
+  .score-value {
+    font-size: 18px;
   }
-  
-  .rank-section, .stock-section, .score-details {
-    margin-right: 0;
-    min-width: auto;
+
+  .score-max {
+    font-size: 12px;
   }
-  
-  .rank-section {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+
+  .stock-name {
+    font-size: 13px;
   }
-  
-  .score-tags {
-    justify-content: flex-start;
+
+  .stock-code {
+    font-size: 11px;
+  }
+
+  .reason-text {
+    font-size: 11px;
+    padding: 6px 10px;
+    line-height: 1.6;
+  }
+
+  .no-score-text {
+    font-size: 11px;
+    padding: 6px 10px;
   }
 }
 </style>

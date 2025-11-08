@@ -123,25 +123,51 @@
     <!-- 添加监控股票对话框 -->
     <el-dialog v-model="showAddDialog" title="添加监控股票" width="400px">
       <el-form :model="addForm" label-width="80px" @submit.prevent="confirmAdd">
-        <el-form-item label="股票代码" required>
-          <el-input 
-            v-model="addForm.code" 
-            placeholder="请输入股票代码"
-            @keyup.enter="confirmAdd"
+        <el-form-item label="股票搜索" required>
+          <el-autocomplete
+            v-model="searchKeyword"
+            :fetch-suggestions="handleSearch"
+            placeholder="输入股票代码或名称搜索"
+            :trigger-on-focus="false"
+            clearable
+            style="width: 100%"
+            @select="handleSelectStock"
+            value-key="displayText"
+          >
+            <template #default="{ item }">
+              <div class="search-result-item">
+                <span class="stock-code">{{ item.code }}</span>
+                <span class="stock-name">{{ item.name }}</span>
+              </div>
+            </template>
+          </el-autocomplete>
+        </el-form-item>
+        <el-form-item label="股票代码">
+          <el-input
+            v-model="addForm.code"
+            placeholder="自动填充"
+            readonly
           />
         </el-form-item>
-        <el-form-item label="股票名称" required>
-          <el-input 
-            v-model="addForm.name" 
-            placeholder="请输入股票名称"
-            @keyup.enter="confirmAdd"
+        <el-form-item label="股票名称">
+          <el-input
+            v-model="addForm.name"
+            placeholder="自动填充"
+            readonly
           />
         </el-form-item>
       </el-form>
       <template #footer>
         <div class="dialog-footer">
-          <el-button @click="showAddDialog = false">取消</el-button>
-          <el-button type="primary" @click="confirmAdd">确定</el-button>
+          <el-button @click="handleCancelAdd" :disabled="addingStock">取消</el-button>
+          <el-button
+            type="primary"
+            @click="confirmAdd"
+            :disabled="!addForm.code || !addForm.name"
+            :loading="addingStock"
+          >
+            {{ addingStock ? '添加中...' : '确定' }}
+          </el-button>
         </div>
       </template>
     </el-dialog>
@@ -152,6 +178,7 @@
 import { ref, reactive, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getStrategyOptions } from '@/config/strategyConfig.js'
+import { searchStock, getRecentLimitUp } from '@/api/stock.js'
 
 // Props
 const props = defineProps({
@@ -194,6 +221,8 @@ const emit = defineEmits([
 
 // 响应式数据
 const showAddDialog = ref(false)
+const searchKeyword = ref('')
+const addingStock = ref(false)
 const addForm = reactive({
   code: '',
   name: ''
@@ -234,19 +263,99 @@ const strategyStatusText = computed(() => {
 
 // 方法
 
-const confirmAdd = () => {
-  const stockInfo = {
-    code: addForm.code.trim(),
-    name: addForm.name.trim()
+/**
+ * 处理股票搜索
+ * @param {string} queryString - 搜索关键词
+ * @param {Function} cb - 回调函数
+ */
+const handleSearch = async (queryString, cb) => {
+  if (!queryString || queryString.trim() === '') {
+    cb([])
+    return
   }
-  
-  // 通知父组件处理添加逻辑
-  emit('add-stock', stockInfo)
-  
-  // 重置表单
+
+  try {
+    const results = await searchStock(queryString)
+    // 为每个结果添加 displayText 用于显示
+    const suggestions = results.map(item => ({
+      ...item,
+      displayText: `${item.code} ${item.name}`
+    }))
+    cb(suggestions)
+  } catch (error) {
+    console.error('搜索股票失败:', error)
+    cb([])
+  }
+}
+
+/**
+ * 选择股票后的处理
+ * @param {Object} item - 选中的股票信息
+ */
+const handleSelectStock = (item) => {
+  addForm.code = item.code
+  addForm.name = item.name
+}
+
+/**
+ * 取消添加
+ */
+const handleCancelAdd = () => {
+  showAddDialog.value = false
+  resetAddForm()
+}
+
+/**
+ * 确认添加股票
+ */
+const confirmAdd = async () => {
+  if (!addForm.code || !addForm.name) {
+    ElMessage.warning('请先搜索并选择股票')
+    return
+  }
+
+  try {
+    addingStock.value = true
+
+    // 获取涨停原因
+    const limitUpInfo = await getRecentLimitUp(addForm.code)
+
+    const stockInfo = {
+      code: addForm.code.trim(),
+      name: addForm.name.trim(),
+      limitUpReason: limitUpInfo?.reasonType || '--',
+      limitUpType: limitUpInfo?.limitUpType || null,
+      limitUpDate: limitUpInfo?.date || null
+    }
+
+    // 通知父组件处理添加逻辑
+    emit('add-stock', stockInfo)
+
+    // 重置表单
+    resetAddForm()
+    showAddDialog.value = false
+
+    // 显示提示信息
+    if (limitUpInfo?.reasonType) {
+      ElMessage.success(`已添加 ${stockInfo.name}，涨停原因：${limitUpInfo.reasonType}`)
+    } else {
+      ElMessage.success(`已添加 ${stockInfo.name}`)
+    }
+  } catch (error) {
+    console.error('添加股票失败:', error)
+    ElMessage.error('添加股票失败，请重试')
+  } finally {
+    addingStock.value = false
+  }
+}
+
+/**
+ * 重置添加表单
+ */
+const resetAddForm = () => {
+  searchKeyword.value = ''
   addForm.code = ''
   addForm.name = ''
-  showAddDialog.value = false
 }
 
 const removeStock = (index) => {
@@ -345,5 +454,21 @@ const handleStrategyChange = (strategyId) => {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.search-result-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-result-item .stock-code {
+  color: #1890ff;
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.search-result-item .stock-name {
+  color: #606266;
 }
 </style>

@@ -97,26 +97,28 @@ export function useStockMonitor() {
       ElMessage.warning('请填写完整的股票信息')
       return false
     }
-    
+
     // 检查是否已存在
     const exists = stocks.value.some(stock => stock.code === stockInfo.code.trim())
     if (exists) {
       ElMessage.warning('该股票已在监控列表中')
       return false
     }
-    
+
     // 添加到监控列表
     const newStock = {
       code: stockInfo.code.trim().toUpperCase(),
       name: stockInfo.name.trim(),
-      price: '0.00',
-      changePercent: '0.00',
-      limitUpReason: '--',
+      price: stockInfo.price || '0.00',
+      changePercent: stockInfo.changePercent || '0.00',
+      limitUpReason: stockInfo.limitUpReason || '--',
+      limitUpType: stockInfo.limitUpType || null,
+      limitUpDate: stockInfo.limitUpDate || null,
       source: 'manual'
     }
-    
+
     stocks.value = [...stocks.value, newStock]
-    ElMessage.success('添加监控股票成功')
+    // 注意：这里不显示成功消息,因为在 StockMonitor 组件的 confirmAdd 中已经显示了
     return true
   }
   

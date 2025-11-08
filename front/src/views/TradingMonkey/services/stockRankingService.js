@@ -3,7 +3,7 @@
  * 根据综合权重对监控股票进行智能排序
  */
 
-import { fetchHistoryData } from '../../../utils/quoteApi.js'
+import { fetchHistoryData, fetchMinuteData, getPreTradeDate } from '../../../utils/quoteApi.js'
 import { sendLLMMessage } from '../../../services/llmService.js'
 
 /**
@@ -20,9 +20,10 @@ export class StockRankingService {
    * 对股票列表进行智能排序
    * @param {Array} stocks - 监控股票列表
    * @param {Object} conceptRanking - 概念排行数据 {topRisers: [], topFallers: []}
+   * @param {Boolean} forceRefresh - 是否强制刷新（跳过缓存）
    * @returns {Promise<Array>} 排序后的股票列表，带权重信息
    */
-  async rankStocks(stocks, conceptRanking) {
+  async rankStocks(stocks, conceptRanking, forceRefresh = false) {
     if (this.isRanking) {
       throw new Error('正在排序中，请稍后再试')
     }
@@ -35,7 +36,7 @@ export class StockRankingService {
       this.isRanking = true
 
       // 1. 收集所有股票的详细数据
-      const stocksWithData = await this.collectStockData(stocks, conceptRanking)
+      const stocksWithData = await this.collectStockData(stocks, conceptRanking, forceRefresh)
 
       // 2. 计算每只股票的权重分数
       const stocksWithScores = this.calculateScores(stocksWithData)
@@ -51,51 +52,199 @@ export class StockRankingService {
 
   /**
    * 收集股票数据
+   * @param {Boolean} forceRefresh - 是否强制刷新（跳过缓存）
    */
-  async collectStockData(stocks, conceptRanking) {
-    
+  async collectStockData(stocks, conceptRanking, forceRefresh = false) {
+
     // 获取60日期间：今日往前推60天
     const endDate = new Date()
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - 60)
-    
+
     const formatDate = (date) => date.toISOString().slice(0, 10).replace(/-/g, '')
     const startDateStr = formatDate(startDate)
     const endDateStr = formatDate(endDate)
 
-    const stocksWithData = []
+    const stockCodes = stocks.map(stock => stock.code)
 
-    for (const stock of stocks) {
+    try {
+      const allKlineResponse = await fetchHistoryData(stockCodes, startDateStr, endDateStr)
+      const preTradeDate = await getPreTradeDate()
+
+      let allMinuteDataResponse = null
       try {
-        // 获取K线数据
-        const klineData = await this.getKlineData(stock.code, startDateStr, endDateStr)
+        allMinuteDataResponse = await fetchMinuteData(stockCodes, preTradeDate)
+      } catch (minuteError) {
+        console.warn(`[StockRanking] 获取分时数据失败:`, minuteError)
+      }
 
-        // 获取涨停原因（直接使用股票对象中的数据）
-        const ztReason = this.parseZtReason(stock.limitUpReason)
+      const stocksWithData = stocks.map(stock => {
+        try {
+          const klineData = this.parseKlineData(stock.code, allKlineResponse)
+          const minuteData = this.parseMinuteData(stock.code, allMinuteDataResponse)
+          const ztReason = this.parseZtReason(stock.limitUpReason)
 
-        stocksWithData.push({
-          ...stock,
-          klineData,
-          ztReason,
-          dataCollectedAt: new Date().toISOString()
-        })
+          return {
+            ...stock,
+            klineData,
+            minuteData,
+            ztReason,
+            dataCollectedAt: new Date().toISOString()
+          }
 
-      } catch (error) {
-        // 即使数据收集失败，也保留基本信息
-        stocksWithData.push({
-          ...stock,
-          klineData: null,
-          ztReason: null,
-          error: error.message,
-          dataCollectedAt: new Date().toISOString()
-        })
+        } catch (error) {
+          console.error(`[StockRanking] 处理股票数据失败: ${stock.code}`, error)
+          return {
+            ...stock,
+            klineData: null,
+            minuteData: null,
+            ztReason: null,
+            error: error.message,
+            dataCollectedAt: new Date().toISOString()
+          }
+        }
+      })
+
+      const stocksWithConceptMatch = await this.batchAnalyzeConceptMatch(stocksWithData, conceptRanking.topRisers, forceRefresh)
+      return stocksWithConceptMatch
+
+    } catch (error) {
+      console.error(`[StockRanking] 批量获取K线数据失败`, error)
+
+      const stocksWithData = []
+      const preTradeDate = await getPreTradeDate()
+
+      for (const stock of stocks) {
+        try {
+          const klineData = await this.getKlineData(stock.code, startDateStr, endDateStr)
+
+          let minuteData = null
+          try {
+            const minuteDataResponse = await fetchMinuteData([stock.code], preTradeDate)
+            minuteData = this.parseMinuteData(stock.code, minuteDataResponse)
+          } catch (minuteError) {
+            console.warn(`[StockRanking] 获取${stock.code}分时数据失败:`, minuteError)
+          }
+
+          const ztReason = this.parseZtReason(stock.limitUpReason)
+
+          stocksWithData.push({
+            ...stock,
+            klineData,
+            minuteData,
+            ztReason,
+            dataCollectedAt: new Date().toISOString()
+          })
+
+        } catch (error) {
+          stocksWithData.push({
+            ...stock,
+            klineData: null,
+            minuteData: null,
+            ztReason: null,
+            error: error.message,
+            dataCollectedAt: new Date().toISOString()
+          })
+        }
+      }
+
+      const stocksWithConceptMatch = await this.batchAnalyzeConceptMatch(stocksWithData, conceptRanking.topRisers, forceRefresh)
+      return stocksWithConceptMatch
+    }
+  }
+
+  /**
+   * 从批量响应中解析单个股票的K线数据
+   * @param {string} stockCode - 股票代码
+   * @param {Object} allKlineResponse - 批量K线数据响应
+   * @returns {Array|null} K线数组
+   */
+  parseKlineData(stockCode, allKlineResponse) {
+    if (!allKlineResponse) {
+      return null
+    }
+
+    let stockData = null
+
+    if (allKlineResponse[stockCode]) {
+      stockData = allKlineResponse[stockCode]
+    } else {
+      for (const key of Object.keys(allKlineResponse)) {
+        if (key.endsWith(`:${stockCode}`) || key === stockCode) {
+          stockData = allKlineResponse[key]
+          break
+        }
       }
     }
 
-    // 批量分析概念匹配
-    const stocksWithConceptMatch = await this.batchAnalyzeConceptMatch(stocksWithData, conceptRanking.topRisers)
+    if (!stockData) {
+      console.warn(`[StockRanking] 未找到K线数据: ${stockCode}`)
+      return null
+    }
 
-    return stocksWithConceptMatch
+    const klineArray = []
+    for (const [date, dayData] of Object.entries(stockData)) {
+      klineArray.push({
+        date: date,
+        close: parseFloat(dayData.CLOSE || 0),
+        open: parseFloat(dayData.OPEN || 0),
+        pre_close: parseFloat(dayData.PRE || 0),
+        volume: parseFloat(dayData.VOL || 0),
+        amount: parseFloat(dayData.money || 0),
+        change_percent: dayData.PRE ? ((parseFloat(dayData.CLOSE) - parseFloat(dayData.PRE)) / parseFloat(dayData.PRE) * 100).toFixed(2) : 0
+      })
+    }
+
+    klineArray.sort((a, b) => a.date.localeCompare(b.date))
+    return klineArray
+  }
+
+  /**
+   * 从批量响应中解析单个股票的分时数据
+   * @param {string} stockCode - 股票代码
+   * @param {Object} allMinuteResponse - 批量分时数据响应
+   * @returns {Object|null} 分时数据对象 {times: [], prices: [], volumes: []}
+   */
+  parseMinuteData(stockCode, allMinuteResponse) {
+    if (!allMinuteResponse) {
+      return null
+    }
+
+    let stockData = null
+
+    if (allMinuteResponse[stockCode]) {
+      stockData = allMinuteResponse[stockCode]
+    } else {
+      for (const key of Object.keys(allMinuteResponse)) {
+        if (key.endsWith(`:${stockCode}`) || key === stockCode) {
+          stockData = allMinuteResponse[key]
+          break
+        }
+      }
+    }
+
+    if (!stockData) {
+      console.warn(`[StockRanking] 未找到分时数据: ${stockCode}`)
+      return null
+    }
+
+    const times = []
+    const prices = []
+    const volumes = []
+
+    for (const [time, minuteData] of Object.entries(stockData)) {
+      times.push(time)
+      const price = parseFloat(minuteData.NEW || minuteData.CLOSE || 0)
+      const volume = parseFloat(minuteData.VOL || 0)
+      prices.push(price)
+      volumes.push(volume)
+    }
+
+    return {
+      times,
+      prices,
+      volumes
+    }
   }
 
   /**
@@ -104,34 +253,44 @@ export class StockRankingService {
   async getKlineData(stockCode, startDate, endDate) {
     try {
       const response = await fetchHistoryData([stockCode], startDate, endDate)
-      
+
+      let stockData = null
+
       if (response && response[stockCode]) {
-        const stockData = response[stockCode]
-        
-        // 数据格式：{date: {CLOSE, OPEN, PRE, VOL, money}}
-        // 转换为数组格式：[{date, close, open, pre_close, volume, amount}]
-        const klineArray = []
-        
-        for (const [date, dayData] of Object.entries(stockData)) {
-          klineArray.push({
-            date: date,
-            close: parseFloat(dayData.CLOSE || 0),
-            open: parseFloat(dayData.OPEN || 0),
-            pre_close: parseFloat(dayData.PRE || 0),
-            volume: parseFloat(dayData.VOL || 0),
-            amount: parseFloat(dayData.money || 0),
-            change_percent: dayData.PRE ? ((parseFloat(dayData.CLOSE) - parseFloat(dayData.PRE)) / parseFloat(dayData.PRE) * 100).toFixed(2) : 0
-          })
+        stockData = response[stockCode]
+      } else if (response) {
+        for (const key of Object.keys(response)) {
+          if (key.endsWith(`:${stockCode}`) || key === stockCode) {
+            stockData = response[key]
+            break
+          }
         }
-        
-        // 按日期排序（从早到晚）
-        klineArray.sort((a, b) => a.date.localeCompare(b.date))
-        
-        return klineArray
       }
-      
-      return null
+
+      if (!stockData) {
+        console.warn(`[StockRanking] 未找到股票K线数据: ${stockCode}`)
+        return null
+      }
+
+      const klineArray = []
+
+      for (const [date, dayData] of Object.entries(stockData)) {
+        klineArray.push({
+          date: date,
+          close: parseFloat(dayData.CLOSE || 0),
+          open: parseFloat(dayData.OPEN || 0),
+          pre_close: parseFloat(dayData.PRE || 0),
+          volume: parseFloat(dayData.VOL || 0),
+          amount: parseFloat(dayData.money || 0),
+          change_percent: dayData.PRE ? ((parseFloat(dayData.CLOSE) - parseFloat(dayData.PRE)) / parseFloat(dayData.PRE) * 100).toFixed(2) : 0
+        })
+      }
+
+      klineArray.sort((a, b) => a.date.localeCompare(b.date))
+      return klineArray
+
     } catch (error) {
+      console.error(`[StockRanking] 获取K线数据异常: ${stockCode}`, error)
       return null
     }
   }
@@ -302,18 +461,10 @@ export class StockRankingService {
    * 使用 deepseek 大模型智能分析涨停原因与热门概念的匹配度
    * @param {Array} stocksWithData - 带数据的股票列表
    * @param {Array} topRisingConcepts - 今日涨幅前十概念
+   * @param {Boolean} forceRefresh - 是否强制刷新（跳过缓存）
    * @returns {Promise<Array>} 带概念匹配结果的股票列表
    */
-  async batchAnalyzeConceptMatch(stocksWithData, topRisingConcepts) {
-    if (!stocksWithData || stocksWithData.length === 0 || !topRisingConcepts || topRisingConcepts.length === 0) {
-      // 如果没有概念数据，所有股票的概念匹配都设为 false
-      return stocksWithData.map(stock => ({
-        ...stock,
-        conceptMatch: false,
-        matchedConcepts: []
-      }))
-    }
-
+  async batchAnalyzeConceptMatch(stocksWithData, topRisingConcepts, forceRefresh = false) {
     try {
       // 清理过期缓存
       this.cleanExpiredCache()
@@ -324,10 +475,11 @@ export class StockRankingService {
       )
 
       if (validStocks.length === 0) {
-        // 如果没有有效的涨停原因数据，都设为不匹配
+        // 如果没有有效的涨停原因数据，都设为0分
         return stocksWithData.map(stock => ({
           ...stock,
-          conceptMatch: false,
+          score: 0,
+          scoreReason: '无涨停原因数据',
           matchedConcepts: []
         }))
       }
@@ -337,69 +489,170 @@ export class StockRankingService {
       const cacheKey = this.generateCacheKey(stockReasons, topRisingConcepts)
 
 
-      // 尝试从缓存获取结果
-      const cachedResult = this.getCachedResult(cacheKey)
-      if (cachedResult) {
-        // 应用缓存结果到股票数据
-        return stocksWithData.map(stock => {
-          const stockResult = cachedResult[stock.code]
-          return {
-            ...stock,
-            conceptMatch: stockResult ? stockResult.match : false,
-            matchedConcepts: stockResult ? stockResult.concepts || [] : [],
-            fromCache: true // 标记来自缓存
-          }
-        })
+      // 尝试从缓存获取结果（强制刷新时跳过缓存）
+      if (!forceRefresh) {
+        const cachedResult = this.getCachedResult(cacheKey)
+        if (cachedResult) {
+          console.log('[StockRanking] 使用缓存的AI评分结果')
+          // 应用缓存结果到股票数据
+          return stocksWithData.map(stock => {
+            const stockResult = cachedResult[stock.code]
+            return {
+              ...stock,
+              // 使用AI的综合评分（0-100分）
+              score: stockResult ? stockResult.score : 0,
+              scoreReason: stockResult ? stockResult.reason : '未评分',
+              matchedConcepts: stockResult ? stockResult.concepts || [] : [],
+              fromCache: true // 标记来自缓存
+            }
+          })
+        }
+      } else {
+        console.log('[StockRanking] 强制刷新，跳过缓存，重新调用AI分析')
       }
 
-      // 构造概念数据格式，按照你提供的示例
-      const conceptData = {
-        errorcode: 0,
-        errormsg: "",
-        result: topRisingConcepts.slice(0, 10).map((concept, index) => ({
-          platecode: concept.code || (880000 + index), // 如果没有code，生成一个
-          increase: concept.change_percent || concept.increase || 0,
-          platename: concept.name || concept.platename
-        }))
-      }
+      // 1. 提取概念名称列表（优化：简化数据，只传递概念名称）
+      const conceptNames = topRisingConcepts.slice(0, 10).map(concept =>
+        concept.name || concept.platename
+      ).filter(Boolean) // 过滤掉空值
 
-      // 构造批量分析的 prompt
-      const stockReasonsText = validStocks.map(stock =>
-        `${stock.name}(${stock.code}): ${stock.ztReason.reason}`
-      ).join('\n')
+      // 2. 构造股票分析数据（包含涨停原因、K线数据和分时数据）
+      const stockAnalysisData = validStocks.map(stock => {
+        const klineText = this.formatKlineForAI(stock.klineData, 30)
+        const minuteText = this.formatMinuteDataForAI(stock.minuteData)
 
+        return {
+          name: stock.name,
+          code: stock.code,
+          reason: stock.ztReason.reason,
+          klineText,
+          minuteText
+        }
+      })
+
+      // 3. 格式化股票数据文本
+      const stockDataText = stockAnalysisData.map(stock =>
+        `${stock.name}(${stock.code}):\n涨停原因: ${stock.reason}\n\n最近30日K线:\n${stock.klineText}\n\n上一交易日分时特征:\n${stock.minuteText}`
+      ).join('\n\n' + '='.repeat(60) + '\n\n')
+
+      // 4. 构造优化后的prompt（AI完全接管评分）
       const prompt = `
-你是一个专业的股市分析师，需要分析股票的涨停原因是否匹配当日热门概念。
+你是一位经验丰富的超短线交易员，精通量价分析。请综合分析以下股票，给出0-100分的评分。
 
-任务：分析以下股票的涨停原因，判断是否在今日涨幅前十的概念范围内。
+【交易风格】超短线（持仓1-3天），重点关注：
+- 概念热度和题材匹配度
+- 资金流向和主力动向
+- 短期量价配合
+- 出货信号识别
 
-股票涨停原因：
-${stockReasonsText}
+【今日涨幅前十概念】
+${conceptNames.join('、')}
 
-今日涨幅前十概念数据：
-${JSON.stringify(conceptData)}
+【股票分析数据】
+${stockDataText}
 
-分析要求：
-1. 对每只股票的涨停原因进行语义分析
-2. 判断涨停原因是否与今日热门概念相关（支持模糊匹配、相关概念匹配）
-3. 如果匹配，列出匹配的具体概念名称
+【评分标准（0-100分）】
 
-输出格式（严格按照JSON格式，不要包含任何其他内容）：
+📊 概念匹配度（0-40分）：
+- 完全匹配今日热门概念：30-40分
+- 部分匹配或相关概念：15-30分
+- 概念较冷门或不相关：0-15分
+
+📈 量价健康度（0-40分）：
+⚠️ 重点分析上一交易日的完整分时走势，这对集合竞价买入决策至关重要！
+
+【K线维度评分】（20分）
+高分（15-20分）：
+- 放量上涨：价格上涨且成交量明显放大（较前几日增加30%以上）
+- 缩量回调：小幅回调但成交量明显萎缩，筹码稳定
+- 突破放量：突破前期高点时伴随成交量放大
+- 连续阳线：近期连续收阳，成交量温和放大
+
+中等（8-15分）：量价平衡、横盘整理、温和上涨
+
+低分（0-8分）：上涨缩量、下跌放量、冲高回落、量价背离、巨量滞涨
+
+【分时维度评分】（20分）- 基于上一交易日完整分时数据
+⚠️ 你需要自己分析完整的分时数据，识别以下关键模式：
+
+高分模式（15-20分）：
+- 尾盘封板/强势拉升（14:30后）：资金强势，次日容易高开
+- 全天强势：价格持续在高位，振幅小，筹码锁定好
+- 午后放量上攻：13:00后成交量放大且价格上涨，主力进场
+- 分时平稳上行：价格稳步抬升，无大幅回调
+
+中等模式（8-15分）：
+- 震荡整理：全天窄幅震荡，成交量平稳
+- 盘中回调后企稳：有回调但收盘企稳
+
+⚠️ 低分/出货模式（0-8分）- 这些是致命信号，必须严格扣分！
+- 尾盘跳水（14:30后大跌）：主力出货，次日大概率低开
+- 冲高回落：开盘拉高后持续走低，诱多出货
+- 炸板：涨停后打开且未再封，承接力弱
+- 巨量震荡：振幅大（>5%）且成交量异常放大
+- 高开低走：开盘高开但全天走低
+- 盘中跳水：任何时段突然大幅下跌（跌幅>3%）
+
+【分析方法】：
+1. 观察开盘走势（9:30-10:00）：是否强势还是弱势
+2. 观察午盘走势（13:00-14:00）：是否有主力资金介入
+3. ⚠️ 重点观察尾盘（14:30-15:00）：这是最关键的时段
+4. 观察全天量价配合：价升量增是健康，价升量缩或价跌量增是危险信号
+5. 识别异常波动：突然跳水、巨量对倒等
+
+⚡ 技术形态加分（0-20分）：
+- 龙回头二波启动：+10分
+- 突破平台整理：+8分
+- 缩量洗盘后启动：+6分
+- 连续缩量阴线后反弹：+5分
+- 其他健康形态：0-5分
+
+⚠️ 风险减分项（可直接从总分扣除）：
+- 近期有跌停板（5日内）：-15分
+- 连续跌停或多次跌停：-30分
+- 高位巨量换手后下跌：-20分
+- 破位下跌（跌破重要支撑）：-15分
+- 阴跌不止（连续5天以上阴线）：-10分
+- 成交量异常萎缩（地量）：-8分
+- ST或*ST股票：-20分
+
+【输出格式】严格按照JSON格式，不要包含任何其他内容。
+⚠️ 重要：JSON的key必须是纯股票代码（不要包含股票名称），例如"605196"而不是"华通线缆(605196)"
 {
-  "股票代码1": {
-    "match": true/false,
-    "concepts": ["匹配的概念1", "匹配的概念2"]
+  "605196": {
+    "score": 85,
+    "reason": "概念匹配(35分) + K线健康度(18分) + 分时健康度(20分) + 技术形态加分(12分)",
+    "concepts": ["游戏", "人工智能"]
   },
-  "股票代码2": {
-    "match": true/false,
-    "concepts": ["匹配的概念1"]
+  "603069": {
+    "score": 25,
+    "reason": "概念匹配(5分) + K线健康度(10分) + 分时健康度(10分) + 技术形态加分(0分)",
+    "concepts": []
+  },
+  "000993": {
+    "score": 20,
+    "reason": "概念匹配(20分) + K线健康度(15分) + 分时健康度(10分) + 技术形态加分(0分) + 近期跌停(-15分) + 破位下跌(-10分)",
+    "concepts": ["半导体"]
   }
 }
 
-注意：
+【注意事项】
 - 只输出JSON，不要有任何解释文字
-- 概念匹配要考虑相关性，比如"游戏出海"与"游戏"概念相关
-- 如果不匹配，concepts 数组为空
+- score必须是0-100之间的整数，可以为负数（存在严重风险时）
+- reason格式要求：
+  * 所有项都用 + 连接（包括减分项）
+  * 减分项的分数带负号，如：近期跌停(-15分)
+  * 不要写"无风险减分"这类0分项
+  * 标准格式：概念匹配(XX分) + K线健康度(XX分) + 分时健康度(XX分) + 技术形态加分(XX分) + 风险项1(-XX分) + 风险项2(-XX分)
+- 概念匹配支持模糊匹配和相关性判断
+- ⚠️ **分时数据分析是核心**：
+  * 你会看到完整的分时价格和成交量数据（采样后约40-60个时间点）
+  * 必须仔细分析尾盘走势（14:30-15:00），这是最关键的判断依据
+  * 尾盘跳水、炸板、巨量震荡等出货信号必须严格扣分
+  * 尾盘封板、强势拉升等强势信号可以加分
+- 重点识别资金出货信号，发现出货迹象果断给低分
+- 严格执行减分项：跌停板、破位、阴跌等风险必须扣分
+- 超短线交易风险优先：宁可错过，不要接盘高风险股票
 `
 
 
@@ -415,38 +668,53 @@ ${JSON.stringify(conceptData)}
       )
 
 
-      // 解析响应
       let analysisResult = {}
       try {
         const responseContent = response.content || response.message || ''
-        // 提取JSON部分（可能包含markdown格式）
         const jsonMatch = responseContent.match(/\{[\s\S]*\}/)
         if (jsonMatch) {
-          analysisResult = JSON.parse(jsonMatch[0])
+          const rawResult = JSON.parse(jsonMatch[0])
+
+          analysisResult = {}
+          for (const [key, value] of Object.entries(rawResult)) {
+            const codeMatch = key.match(/\((\d{6})\)/) || key.match(/^(\d{6})$/)
+            if (codeMatch) {
+              const pureCode = codeMatch[1]
+              analysisResult[pureCode] = value
+            } else {
+              console.warn(`[StockRanking] 无法解析股票代码: "${key}"`)
+            }
+          }
         } else {
+          console.error('[StockRanking] AI返回内容中未找到JSON')
         }
       } catch (parseError) {
+        console.error('[StockRanking] JSON解析失败:', parseError)
       }
 
-      // 缓存分析结果
       this.setCachedResult(cacheKey, analysisResult)
 
-      // 将分析结果应用到股票数据
       return stocksWithData.map(stock => {
         const stockResult = analysisResult[stock.code]
+        if (!stockResult) {
+          console.warn(`[StockRanking] 未找到股票 ${stock.code}(${stock.name}) 的评分结果`)
+        }
         return {
           ...stock,
-          conceptMatch: stockResult ? stockResult.match : false,
+          score: stockResult ? stockResult.score : 0,
+          scoreReason: stockResult ? stockResult.reason : '未评分',
           matchedConcepts: stockResult ? stockResult.concepts || [] : [],
-          fromCache: false // 标记来自AI分析
+          fromCache: false
         }
       })
 
     } catch (error) {
-      // 发生错误时，所有股票的概念匹配都设为 false
+      console.error('[StockRanking] AI分析失败:', error)
+      // 发生错误时，所有股票评分设为0
       return stocksWithData.map(stock => ({
         ...stock,
-        conceptMatch: false,
+        score: 0,
+        scoreReason: `AI分析失败: ${error.message}`,
         matchedConcepts: [],
         conceptAnalysisError: error.message
       }))
@@ -454,149 +722,73 @@ ${JSON.stringify(conceptData)}
   }
 
   /**
-   * 检查概念匹配（保留作为后备方法）
+   * 格式化K线数据为文本（用于传递给AI）
+   * @param {Array} klineData - K线数据数组
+   * @param {number} maxDays - 最多取最近几天，默认30天
+   * @returns {string} 格式化的K线数据文本
    */
-  checkConceptMatch(ztReason, topRisingConcepts) {
-    if (!ztReason || !ztReason.concepts || !topRisingConcepts) {
-      return false
+  formatKlineForAI(klineData, maxDays = 30) {
+    if (!klineData || !Array.isArray(klineData) || klineData.length === 0) {
+      return '无K线数据'
     }
 
-    // 检查涨停原因中的概念是否在今日涨幅前十概念中
-    const topConceptNames = topRisingConcepts.map(concept => concept.name)
+    // 取最近的N天数据
+    const recentData = klineData.slice(-maxDays)
 
-    return ztReason.concepts.some(concept =>
-      topConceptNames.some(topConcept =>
-        topConcept.includes(concept) || concept.includes(topConcept)
-      )
-    )
+    // 格式化为表格文本（包含量价关系）
+    const lines = ['日期       开盘    收盘    涨跌幅   成交量(万手)']
+    recentData.forEach(day => {
+      // 成交量转换为万手（原始单位可能是手）
+      const volumeWan = (day.volume / 10000).toFixed(2)
+      const line = `${day.date} ${day.open.toFixed(2).padStart(7)} ${day.close.toFixed(2).padStart(7)} ${String(day.change_percent).padStart(6)}% ${String(volumeWan).padStart(10)}`
+      lines.push(line)
+    })
+
+    return lines.join('\n')
   }
 
   /**
-   * 计算股票权重分数
+   * 格式化分时数据为文本（用于传递给AI）
+   * @param {Object} minuteData - 分时数据对象 {times: [], prices: [], volumes: []}
+   * @returns {string} 格式化的分时数据文本
+   */
+  formatMinuteDataForAI(minuteData) {
+    if (!minuteData || !minuteData.times || minuteData.times.length === 0) {
+      return '无分时数据'
+    }
+
+    const { times, prices, volumes } = minuteData
+    const lines = ['时间     价格    成交量(万手)']
+
+    for (let i = 0; i < times.length; i++) {
+      const time = times[i]
+      const isKeyTime = (time >= '09:30:00' && time <= '10:00:00') ||
+                        (time >= '14:30:00' && time <= '15:00:00')
+
+      const minute = parseInt(time.split(':')[1])
+      const isSamplePoint = minute % 5 === 0 || minute === 0
+
+      if (isKeyTime || isSamplePoint || i === 0 || i === times.length - 1) {
+        const price = prices[i].toFixed(2)
+        const volume = (volumes[i] / 10000).toFixed(2)
+        lines.push(`${time} ${price.padStart(7)} ${volume.padStart(12)}`)
+      }
+    }
+
+    return lines.join('\n')
+  }
+
+  /**
+   * 计算股票权重分数 - 直接使用AI评分
    */
   calculateScores(stocksWithData) {
-    return stocksWithData.map(stock => {
-      let score = 0
-      const scoreDetails = []
-
-      // 1. 概念匹配评分（匹配到几个概念就加几分，分数无上限）
-      if (stock.conceptMatch && stock.matchedConcepts && stock.matchedConcepts.length > 0) {
-        const conceptScore = stock.matchedConcepts.length
-        score += conceptScore
-        const conceptList = stock.matchedConcepts.join('、')
-        scoreDetails.push(`概念匹配(+${conceptScore}): \n${conceptList}`)
-      }
-
-      // 2. 向上趋势（权重+1）
-      if (this.isUpTrend(stock.klineData)) {
-        score += 1
-        scoreDetails.push('向上趋势(+1)')
-      }
-
-      // 3. 龙回头二波启动（权重+2）
-      if (this.isLongTouSecondWave(stock.klineData)) {
-        score += 2
-        scoreDetails.push('龙回头二波(+2)')
-      }
-
-      // 4. 60天内无跌停（权重+1）
-      if (this.hasNoLimitDown(stock.klineData)) {
-        score += 1
-        scoreDetails.push('无跌停历史(+1)')
-      }
-
-      // 计算最大可能分数（概念匹配分数无上限，其他固定分数为4分）
-      const baseMaxScore = 4 // 向上趋势(1) + 龙回头二波(2) + 无跌停(1)
-      const conceptMaxScore = stock.matchedConcepts ? stock.matchedConcepts.length : 0
-      const maxScore = 10
-
-      return {
-        ...stock,
-        score,
-        scoreDetails,
-        maxScore
-      }
-    })
-  }
-
-  /**
-   * 判断是否为向上趋势
-   */
-  isUpTrend(klineData) {
-    if (!klineData || !Array.isArray(klineData) || klineData.length < 20) {
-      return false
-    }
-
-    // 简单趋势判断：比较最近20天和前20天的平均价格
-    const recent20 = klineData.slice(-20)
-    const previous20 = klineData.slice(-40, -20)
-
-    if (previous20.length < 20) {
-      return false
-    }
-
-    const recentAvg = recent20.reduce((sum, day) => sum + parseFloat(day.close), 0) / 20
-    const previousAvg = previous20.reduce((sum, day) => sum + parseFloat(day.close), 0) / 20
-
-    return recentAvg > previousAvg * 1.02 // 至少上涨2%
-  }
-
-  /**
-   * 判断是否为龙回头二波启动形态
-   */
-  isLongTouSecondWave(klineData) {
-    if (!klineData || !Array.isArray(klineData) || klineData.length < 30) {
-      return false
-    }
-
-    // 龙回头二波启动形态特征：
-    // 1. 前期有明显高点
-    // 2. 回调幅度适中（10-30%）
-    // 3. 近期开始反弹
-    
-    const data = klineData.slice(-30) // 最近30天
-    const prices = data.map(d => parseFloat(d.close))
-    
-    // 找到最高点
-    const maxPrice = Math.max(...prices)
-    const maxIndex = prices.indexOf(maxPrice)
-    
-    // 找到最高点后的最低点
-    const afterMaxPrices = prices.slice(maxIndex)
-    const minPriceAfterMax = Math.min(...afterMaxPrices)
-    const minIndex = maxIndex + afterMaxPrices.indexOf(minPriceAfterMax)
-    
-    // 计算回调幅度
-    const pullbackRatio = (maxPrice - minPriceAfterMax) / maxPrice
-    
-    // 检查最近价格是否开始反弹
-    const currentPrice = prices[prices.length - 1]
-    const recentLow = Math.min(...prices.slice(-5))
-    const reboundRatio = (currentPrice - recentLow) / recentLow
-    
-    // 龙回头二波条件：
-    // 1. 回调幅度在10%-30%之间
-    // 2. 最近有反弹迹象（5%以上）
-    // 3. 最低点不是最近3天
-    return pullbackRatio >= 0.1 && 
-           pullbackRatio <= 0.3 && 
-           reboundRatio >= 0.05 && 
-           minIndex < prices.length - 3
-  }
-
-  /**
-   * 判断60天内是否无跌停
-   */
-  hasNoLimitDown(klineData) {
-    if (!klineData || !Array.isArray(klineData) || klineData.length === 0) {
-      return false
-    }
-
-    // 检查60天内是否有跌停（跌幅超过9.8%）
-    return !klineData.some(day => {
-      const changePercent = parseFloat(day.change_percent || 0)
-      return changePercent <= -9.8
-    })
+    return stocksWithData.map(stock => ({
+      ...stock,
+      score: stock.score || 0,
+      scoreReason: stock.scoreReason || '未评分',
+      maxScore: 100,
+      matchedConcepts: stock.matchedConcepts || []
+    }))
   }
 
   /**
@@ -604,12 +796,10 @@ ${JSON.stringify(conceptData)}
    */
   sortByScore(stocksWithScores) {
     return stocksWithScores.sort((a, b) => {
-      // 按分数降序排列
       if (b.score !== a.score) {
         return b.score - a.score
       }
-      
-      // 分数相同时按涨幅排序
+
       const aChange = parseFloat(a.change_percent || 0)
       const bChange = parseFloat(b.change_percent || 0)
       return bChange - aChange
