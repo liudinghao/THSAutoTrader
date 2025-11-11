@@ -79,12 +79,13 @@ class AutomationApp:
 
     def init_http_server(self):
         """初始化HTTP服务"""
-        flask_server = FlaskApp(host='localhost', port=5000, controller=self.controller)
+        flask_server = FlaskApp(host='0.0.0.0', port=5000, controller=self.controller)
         flask_server.run_async()
         self.log(f"HTTP服务已启动")
-        self.log(f"健康检查端点：http://{flask_server.host}:{flask_server.port}/health")
-        self.log(f"下单接口：http://{flask_server.host}:{flask_server.port}/xiadan?code=600000&status=1")
-        self.log(f"获取持仓接口：http://{flask_server.host}:{flask_server.port}/position")
+        self.log(f"本地访问地址：http://localhost:{flask_server.port}/health")
+        self.log(f"局域网访问地址：http://<本机IP地址>:{flask_server.port}/health")
+        self.log(f"下单接口：http://<本机IP地址>:{flask_server.port}/xiadan?code=600000&status=1")
+        self.log(f"获取持仓接口：http://<本机IP地址>:{flask_server.port}/position")
         return flask_server
 
     def init_signaling_server(self):

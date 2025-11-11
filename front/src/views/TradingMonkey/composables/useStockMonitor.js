@@ -6,6 +6,8 @@ import { ref, computed } from 'vue'
 import { ElMessage } from 'element-plus'
 import { dataSourceService } from '../services/dataSourceService.js'
 import { fetchRealTimeQuote, isTradeTime } from '../../../utils/quoteApi.js'
+import { sendStockChangeNotification } from '../../../services/notificationService.js'
+import { getStrategyById } from '../../../config/strategyConfig.js'
 
 export function useStockMonitor() {
   // 状态
@@ -21,16 +23,21 @@ export function useStockMonitor() {
   
   /**
    * 获取股票池数据
+   * @param {boolean} isStrategyUpdate - 是否为策略执行更新（需要发送通知）
+   * @param {string} strategyId - 策略ID（仅在策略更新时使用）
    */
-  const fetchStocks = async () => {
+  const fetchStocks = async (isStrategyUpdate = false, strategyId = 'auction_preselect') => {
     if (loading.value.fetch) return
-    
+
     loading.value.fetch = true
     try {
       console.log('开始获取监控股票数据...')
-      
+
+      // 保存旧股票列表用于比较（仅在策略更新时需要）
+      const oldStocks = isStrategyUpdate ? [...stocks.value] : []
+
       const stockData = await dataSourceService.getStockData()
-      
+
       if (Array.isArray(stockData)) {
         stocks.value = stockData.map(stock => ({
           code: stock.code,
@@ -41,6 +48,12 @@ export function useStockMonitor() {
           source: stock.source || 'auction-strategy',
           marketId: stock.marketId
         }))
+
+        // 如果是策略更新，发送通知
+        if (isStrategyUpdate) {
+          sendStockChangeNotification(stocks.value, strategyId)
+        }
+
         return true
       } else {
         ElMessage.warning('获取股票池数据格式异常')
@@ -105,6 +118,9 @@ export function useStockMonitor() {
       return false
     }
 
+    // 保存旧股票列表用于比较
+    const oldStocks = [...stocks.value]
+
     // 添加到监控列表
     const newStock = {
       code: stockInfo.code.trim().toUpperCase(),
@@ -118,6 +134,10 @@ export function useStockMonitor() {
     }
 
     stocks.value = [...stocks.value, newStock]
+
+    // 发送股票变更通知
+    sendStockChangeNotification(stocks.value, 'auction_preselect')
+
     // 注意：这里不显示成功消息,因为在 StockMonitor 组件的 confirmAdd 中已经显示了
     return true
   }
@@ -131,8 +151,15 @@ export function useStockMonitor() {
       ElMessage.warning('股票不存在')
       return false
     }
-    
+
+    // 保存旧股票列表用于比较
+    const oldStocks = [...stocks.value]
+
     stocks.value = stocks.value.filter(stock => stock.code !== stockCode)
+
+    // 发送股票变更通知
+    sendStockChangeNotification(stocks.value, 'auction_preselect')
+
     ElMessage.success('删除监控股票成功')
     return true
   }
@@ -145,9 +172,16 @@ export function useStockMonitor() {
       ElMessage.warning('无效的股票索引')
       return false
     }
-    
+
+    // 保存旧股票列表用于比较
+    const oldStocks = [...stocks.value]
+
     const removedStock = stocks.value[index]
     stocks.value = stocks.value.filter((_, i) => i !== index)
+
+    // 发送股票变更通知
+    sendStockChangeNotification(stocks.value, 'auction_preselect')
+
     ElMessage.success(`删除监控股票 ${removedStock.name} 成功`)
     return true
   }
@@ -156,7 +190,16 @@ export function useStockMonitor() {
    * 清空所有监控股票
    */
   const clearAllStocks = () => {
+    // 保存旧股票列表用于比较
+    const oldStocks = [...stocks.value]
+
     stocks.value = []
+
+    // 发送股票变更通知
+    if (oldStocks.length > 0) {
+      sendStockChangeNotification(stocks.value, 'auction_preselect')
+    }
+
     ElMessage.success('已清空所有监控股票')
   }
   

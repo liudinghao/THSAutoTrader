@@ -86,7 +86,7 @@ import AnalysisResultDialog from '../../components/AnalysisResultDialog.vue'
 // 导入服务
 import { TradingService } from './services/tradingService.js'
 import { getPositionData, getAssetInfo } from '../../api/asset'
-import { fetchRealTimeQuote, isInTradingTime, jumpToQuote } from '../../utils/quoteApi.js'
+import { fetchRealTimeQuote, isInTradingTime, isInTradingHours, jumpToQuote } from '../../utils/quoteApi.js'
 import { performStockAnalysis } from './services/stockAnalysisService'
 import { saveAnalysisResult, getAnalysisResult, getAllAnalysisResults } from '../../utils/indexedDB'
 import { getConceptRanking } from '../../api/concept.js'
@@ -225,7 +225,8 @@ const refreshPositionData = async () => {
  * 刷新股票监控数据
  */
 const handleRefreshStocks = async () => {
-  const success = await stockMonitor.fetchStocks()
+  // 使用新的 fetchStocks 方法，不触发通知（手动刷新）
+  const success = await stockMonitor.fetchStocks(false)
   if (success && stockMonitor.hasStocks.value) {
     // 先获取一次实时数据（不管是否交易时间）
     await stockMonitor.updateRealTimeData()
@@ -272,10 +273,10 @@ const startRealTimeQuotePolling = async () => {
       fetchPositionRealTimeData()         // 更新持仓股票
     ])
 
-    // 启动定时轮询
+    // 启动定时轮询 - 优化：使用轻量级本地时间判断,避免每次都调用API
     stockQuoteInterval = setInterval(async () => {
-      const isTrading = await isInTradingTime()
-      if (isTrading) {
+      // 使用本地时间判断（不调用API），性能更好，避免API失败导致轮询停止
+      if (isInTradingHours()) {
         // 分别更新监控股票和持仓股票的实时数据
         await Promise.all([
           stockMonitor.updateRealTimeData(),  // 更新监控股票
@@ -558,23 +559,16 @@ const onStrategyExecute = async (result) => {
   console.log('策略执行完成，结果:', result)
 
   if (result && result.stocks && Array.isArray(result.stocks)) {
-    // 更新股票监控列表
-    stockMonitor.stocks.value = result.stocks.map(stock => ({
-      code: stock.code,
-      name: stock.name,
-      price: '--',
-      changePercent: '--',
-      limitUpReason: stock.reason_type || '--',
-      source: 'strategy-auto',
-      auction_change: stock.auction_change,
-      close_change: stock.close_change
-    }))
+    // 使用新的 fetchStocks 方法，触发通知
+    const success = await stockMonitor.fetchStocks(true, currentStrategy.value)
 
-    ElMessage.success(`策略自动执行成功，筛选出 ${result.stocks.length} 只股票`)
+    if (success) {
+      ElMessage.success(`策略自动执行成功，筛选出 ${result.stocks.length} 只股票`)
 
-    // 获取实时行情
-    if (result.stocks.length > 0) {
-      await stockMonitor.updateRealTimeData()
+      // 获取实时行情
+      if (result.stocks.length > 0) {
+        await stockMonitor.updateRealTimeData()
+      }
     }
   }
 }
@@ -639,18 +633,18 @@ const loadLocalData = async () => {
 const startMarketDataIntervals = () => {
   // 市场统计数据（30秒）
   fetchMarketStats()
-  marketStatsInterval = setInterval(async () => {
-    const isTrading = await isInTradingTime()
-    if (isTrading) {
+  marketStatsInterval = setInterval(() => {
+    // 使用本地时间判断（不调用API），避免API失败导致轮询停止
+    if (isInTradingHours()) {
       fetchMarketStats()
     }
   }, 30000)
 
   // 概念排行（1分钟）
   fetchConceptRanking()
-  conceptRankingInterval = setInterval(async () => {
-    const isTrading = await isInTradingTime()
-    if (isTrading) {
+  conceptRankingInterval = setInterval(() => {
+    // 使用本地时间判断（不调用API），避免API失败导致轮询停止
+    if (isInTradingHours()) {
       fetchConceptRanking()
     }
   }, 60000)
