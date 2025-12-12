@@ -32,7 +32,8 @@ class Logger:
             # 初始化文件日志
             self.file_logger = logging.getLogger('FileLogger')
             self.file_logger.setLevel(logging.INFO)
-            file_handler = logging.FileHandler('app.log')
+            # 使用utf-8编码写入日志文件，避免中文乱码
+            file_handler = logging.FileHandler('app.log', encoding='utf-8')
             formatter = logging.Formatter('%(asctime)s - %(message)s')
             file_handler.setFormatter(formatter)
             self.file_logger.addHandler(file_handler)

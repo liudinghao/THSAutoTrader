@@ -9,3 +9,4 @@ dist/*/*.json
 .cursorrules
 node_modules/
 html-bak/
+dist/html/
