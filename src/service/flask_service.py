@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, Response
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import threading
 from src.util.logger import Logger
@@ -6,12 +6,8 @@ import time
 import os
 import sys
 import ctypes
-import requests
-import urllib3
 from src.service.window_service import WindowService
-
-# 禁用SSL证书验证警告
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from src.service.proxy_service import ProxyService
 
 class FlaskApp:
     def __init__(self, host='0.0.0.0', port=5000, controller=None):
@@ -31,10 +27,18 @@ class FlaskApp:
         self.running = False
         self.thread = None
         self.logger = Logger.get_instance()
-        
+
+        # 初始化代理服务 - 支持高并发
+        self.proxy_service = ProxyService(
+            cache_ttl=10,           # 缓存10秒
+            pool_connections=100,   # 连接池数量(翻倍)
+            pool_maxsize=200,       # 最大并发连接数(翻倍)
+            max_retries=3           # 失败自动重试3次
+        )
+
         # 配置CORS
         CORS(self.app)
-        
+
         # 设置JSON编码
         self.app.config['JSON_AS_ASCII'] = False
         # 默认路由
@@ -104,7 +108,6 @@ class FlaskApp:
     def resource_path(self, relative_path):
         """获取打包后的资源路径"""
         base_path = os.path.abspath(".")
-
         return os.path.join(base_path, relative_path)
 
     def _register_routes(self):
@@ -222,55 +225,29 @@ class FlaskApp:
                 self.logger.add_log(f"批量撤单失败: {str(e)}")
                 return jsonify({"status": "error", "message": f"批量撤单失败: {str(e)}"})
 
-        # 通用代理接口
+        # 高性能代理接口
         @self.app.route('/proxy/<path:url>', methods=['GET', 'POST', 'PUT', 'DELETE'])
         def proxy(url):
             """
-            通用代理接口,转发请求到目标服务器
+            高性能代理接口 - 委托给ProxyService处理
+
             前端调用: http://localhost:5000/proxy/basic.10jqka.com.cn/mapp/300033/stock_base_info.json
             实际转发: https://basic.10jqka.com.cn/mapp/300033/stock_base_info.json
             """
+            return self.proxy_service.proxy_request(url, request)
+
+        # 代理统计接口
+        @self.app.route('/proxy/stats', methods=['GET'])
+        def proxy_stats():
+            """获取代理服务的统计信息"""
             try:
-                # 构建目标URL - 默认使用https协议
-                target_url = f"https://{url}"
-
-                # 保留原始查询参数
-                if request.query_string:
-                    target_url += f"?{request.query_string.decode('utf-8')}"
-
-                # 准备请求头,直接使用客户端传来的请求头,仅移除Host头避免冲突
-                headers = {key: value for key, value in request.headers if key.lower() != 'host'}
-
-                # 根据请求方法转发
-                if request.method == 'GET':
-                    resp = requests.get(target_url, headers=headers, timeout=10, verify=False)
-                elif request.method == 'POST':
-                    resp = requests.post(target_url, headers=headers, data=request.get_data(), timeout=10, verify=False)
-                elif request.method == 'PUT':
-                    resp = requests.put(target_url, headers=headers, data=request.get_data(), timeout=10, verify=False)
-                elif request.method == 'DELETE':
-                    resp = requests.delete(target_url, headers=headers, timeout=10, verify=False)
-
-                # 记录日志
-                self.logger.add_log(f"代理请求成功: {target_url} -> {resp.status_code}")
-
-                # 构建响应头,排除某些不应该转发的头
-                excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-                response_headers = [(name, value) for name, value in resp.raw.headers.items()
-                                   if name.lower() not in excluded_headers]
-
-                # 返回代理响应
-                return Response(resp.content, resp.status_code, response_headers)
-
-            except requests.exceptions.Timeout:
-                self.logger.add_log(f"代理请求超时: {url}")
-                return jsonify({"status": "error", "message": "请求超时"}), 504
-            except requests.exceptions.RequestException as e:
-                self.logger.add_log(f"代理请求失败: {url}, 错误: {str(e)}")
-                return jsonify({"status": "error", "message": f"代理请求失败: {str(e)}"}), 500
+                stats = self.proxy_service.get_stats()
+                return jsonify({
+                    "status": "success",
+                    "data": stats
+                })
             except Exception as e:
-                self.logger.add_log(f"代理处理异常: {url}, 错误: {str(e)}")
-                return jsonify({"status": "error", "message": f"代理处理异常: {str(e)}"}), 500
+                return jsonify({"status": "error", "message": str(e)}), 500
 
         # 通用静态资源路由
         @self.app.route('/<path:filename>')
