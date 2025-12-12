@@ -85,11 +85,8 @@ class PositionService:
 
     def get_position(self):
         """获取当前持仓"""
-        # 先激活程序
-        # app_path = self.model.get_target_app()
-        # self.window_service.activate_window(app_path)
         try:
-            # 再激活交易程序
+            # 激活交易程序
             trading_path = self.model.get_trading_app()
             self.window_service.activate_window(trading_path)
         except Exception as e:
@@ -114,9 +111,12 @@ class PositionService:
         # 快捷键操作
         self.window_service.send_key('F4')
 
+        # 先点击下刷新按钮（盘中没实时刷新）
+        self._refresh_page(window_result)
 
         # 点击内容区域
         self.window_service.click_element(window_result, 1047)
+        time.sleep(0.2)
         
         self.window_service.send_key('{CTRL+C}')
         # 查找验证码图片元素
@@ -247,6 +247,9 @@ class PositionService:
 
         # 快捷键操作
         self.window_service.send_key('F4')
+
+        # 先点击下刷新按钮（盘中没实时刷新）
+        self._refresh_page(window_result)
         
         # 定义需要获取的字段及其对应的control_id
         balance_fields = {
@@ -278,3 +281,26 @@ class PositionService:
         
         self.logger.add_log(f"资金余额: {result}")
         return result
+    
+    def _refresh_page(self, window_result):
+        """点击刷新按钮刷新当前页面"""
+        # 查找工具栏
+        toolbar_result = self.window_service.find_element_in_window(window_result, 59392)
+        if toolbar_result is None:
+            raise Exception("未找到工具栏")
+        
+        # 在工具栏中查找刷新按钮（按钮名称："刷新当前页面"）
+        descendants = toolbar_result.descendants()
+        refresh_button = None
+        for element in descendants:
+            if hasattr(element, 'window_text') and element.window_text().strip() == "刷新当前页面":
+                refresh_button = element
+                break
+        if refresh_button is None:
+            raise Exception("未找到刷新按钮")
+        
+        # 点击刷新按钮
+        refresh_button.click()
+        self.logger.add_log("已点击刷新按钮")
+        
+        return True
