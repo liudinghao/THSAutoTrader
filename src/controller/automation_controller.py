@@ -52,7 +52,12 @@ class AutomationController:
         """获取资金余额"""
         self.handle_activate_window()
         return self.position_service.get_balance()
-    
+
+    def get_today_trades(self):
+        """获取今日成交"""
+        self.handle_activate_window()
+        return self.position_service.get_today_trades()
+
     def handle_cancel_order(self, order_id=None):
         """处理撤单请求
         Args:
@@ -64,12 +69,18 @@ class AutomationController:
             self.logger.add_log(f"撤单请求失败: {str(e)}")
             raise e
     
-    def handle_cancel_all_orders(self):
-        """处理撤销所有委托请求"""
+    def handle_cancel_all_orders(self, cancel_type=None):
+        """处理撤单请求
+        Args:
+            cancel_type (str, optional): 撤单类型
+                - 'A' 或 None: 全部撤单
+                - 'X': 撤买
+                - 'C': 撤卖
+        """
         try:
-            return self.trading_service.cancel_all_orders()
+            return self.trading_service.cancel_all_orders(cancel_type)
         except Exception as e:
-            self.logger.add_log(f"批量撤单请求失败: {str(e)}")
+            self.logger.add_log(f"撤单请求失败: {str(e)}")
             raise e
     
     def get_pending_orders(self):

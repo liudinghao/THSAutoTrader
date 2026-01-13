@@ -149,7 +149,24 @@ class FlaskApp:
                     "status": "error",
                     "message": f"获取持仓失败: {str(e)}"
                 }), 500
-        
+
+        # 获取今日成交
+        @self.app.route('/today_trades', methods=['GET'])
+        def get_today_trades():
+            try:
+                # 调用controller获取今日成交信息
+                trades = self.controller.get_today_trades()
+                return jsonify({
+                    "status": "success",
+                    "data": trades
+                })
+            except Exception as e:
+                self.logger.add_log(f"获取今日成交失败: {str(e)}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"获取今日成交失败: {str(e)}"
+                }), 500
+
         # 鼠标点击
         @self.app.route('/click', methods=['GET'])
         def click():
@@ -212,18 +229,149 @@ class FlaskApp:
                 self.logger.add_log(f"按键发送失败: {str(e)}")
                 return jsonify({"status": "error", "message": f"下单异常: {str(e)}"})
                
-        # 撤销所有委托
+        # 撤单接口
         @self.app.route('/cancel_all_orders', methods=['GET'])
         def cancel_all_orders():
+            """撤单接口
+            参数:
+                type (str, optional): 撤单类型
+                    - 'A' 或不传: 全部撤单 (control_id: 30001)
+                    - 'X': 撤买 (control_id: 30002)
+                    - 'C': 撤卖 (control_id: 30003)
+            示例:
+                /cancel_all_orders          # 全部撤单
+                /cancel_all_orders?type=A   # 全部撤单
+                /cancel_all_orders?type=X   # 撤买
+                /cancel_all_orders?type=C   # 撤卖
+            """
+            # 获取撤单类型参数
+            cancel_type = request.args.get('type')
+
+            # 参数验证
+            if cancel_type and cancel_type not in ['A', 'X', 'C']:
+                return jsonify({
+                    "status": "error",
+                    "message": f"type参数错误,可选值为: A(全部撤单), X(撤买), C(撤卖)"
+                }), 400
+
             try:
-                result = self.controller.handle_cancel_all_orders()
+                result = self.controller.handle_cancel_all_orders(cancel_type)
+
+                # 构造返回消息
+                operation_name = {
+                    'A': "全部撤单",
+                    'X': "撤买",
+                    'C': "撤卖",
+                    None: "全部撤单"
+                }.get(cancel_type, "撤单")
+
                 if result:
-                    return jsonify({"status": "success", "message": "批量撤单操作已执行"})
+                    return jsonify({
+                        "status": "success",
+                        "message": f"{operation_name}操作已执行",
+                        "data": {"operation": operation_name, "type": cancel_type or 'A'}
+                    })
                 else:
-                    return jsonify({"status": "error", "message": "批量撤单失败"})
+                    return jsonify({
+                        "status": "error",
+                        "message": f"{operation_name}失败"
+                    })
             except Exception as e:
-                self.logger.add_log(f"批量撤单失败: {str(e)}")
-                return jsonify({"status": "error", "message": f"批量撤单失败: {str(e)}"})
+                self.logger.add_log(f"撤单失败: {str(e)}")
+                return jsonify({"status": "error", "message": f"撤单失败: {str(e)}"})
+
+        # 下单确认
+        @self.app.route('/confirm_order', methods=['GET'])
+        def confirm_order():
+            # 从url上获取参数 position (可用仓位,可选)
+            position = request.args.get('position')
+            position_int = None
+
+            try:
+                # 参数校验(仅在传了position参数时)
+                if position is not None:
+                    try:
+                        position_int = int(position)
+                        if position_int not in [1, 2, 3, 4]:
+                            return jsonify({"status": "error", "message": "position参数错误,可选值为1,2,3,4"}), 400
+                    except ValueError:
+                        return jsonify({"status": "error", "message": "position参数必须为数字"}), 400
+
+                # 1. 选中下单确认弹窗
+                window = self.window_service.get_target_window({'class_name': '#32770', 'title':''})
+                if window is None:
+                    return jsonify({"status": "error", "message": "未找到下单确认弹窗"}), 500
+
+                # 1.5. 点击刷新按钮更新可用数量
+                self.logger.add_log(f"点击刷新按钮更新可用数量")
+                self.window_service.click_element(window, 1528)
+                time.sleep(0.1)
+
+                # 2. 获取可用数量(AutomationId: 1034)
+                available_element = self.window_service.find_element_in_window(window, 1034)
+                if available_element is None:
+                    return jsonify({"status": "error", "message": "未找到可用数量元素"}), 500
+
+                # 读取可用数量的值
+                available_amount_str = available_element.window_text().strip()
+                self.logger.add_log(f"获取到可用数量: {available_amount_str}")
+
+                # 校验可用数量是否为0或空
+                if available_amount_str == '0' or available_amount_str == '':
+                    return jsonify({"status": "error", "message": f"可用数量为0,无法下单"}), 400
+
+                # 将可用数量转换为数字
+                try:
+                    available_amount = int(available_amount_str)
+                except ValueError:
+                    return jsonify({"status": "error", "message": f"可用数量格式错误: {available_amount_str}"}), 500
+
+                # 计算下单数量
+                if position_int is not None:
+                    # 根据仓位整除计算实际买入数量,向下取100的整
+                    order_amount = (available_amount // position_int // 100) * 100
+                    self.logger.add_log(f"可用数量: {available_amount}, 仓位: 1/{position_int}, 下单数量: {order_amount}")
+
+                    # 校验下单数量是否小于100股
+                    if order_amount < 100:
+                        return jsonify({
+                            "status": "error",
+                            "message": f"计算后的下单数量({order_amount}股)小于100股,无法下单"
+                        }), 400
+
+                    # 3. 根据仓位参数点击对应的仓位选择按钮
+                    # 1对应12092, 2对应12093, 3对应12094, 4对应12095
+                    position_button_id = 12092 + position_int - 1
+                    self.logger.add_log(f"点击仓位选择按钮,AutomationId: {position_button_id}")
+                    self.window_service.click_element(window, position_button_id)
+                    time.sleep(0.1)
+                else:
+                    # 满仓,下单数量等于可用数量
+                    order_amount = available_amount
+                    self.logger.add_log(f"满仓下单,可用数量: {available_amount}, 下单数量: {order_amount}")
+
+                # 4. 点击确认买入按钮(AutomationId: 1006)
+                self.logger.add_log(f"点击确认买入按钮")
+                self.window_service.click_element(window, 1006)
+
+                # 构造返回消息
+                if position_int is not None:
+                    message = f"下单确认成功,仓位:{position_int},可用数量:{available_amount},下单数量:{order_amount}"
+                else:
+                    message = f"下单确认成功,满仓,可用数量:{available_amount},下单数量:{order_amount}"
+
+                return jsonify({
+                    "status": "success",
+                    "message": message,
+                    "data": {
+                        "available_amount": available_amount,
+                        "position": position_int,
+                        "order_amount": order_amount
+                    }
+                })
+            except Exception as e:
+                self.logger.add_log(f"下单确认失败: {str(e)}")
+                return jsonify({"status": "error", "message": f"下单确认失败: {str(e)}"}), 500
 
         # 高性能代理接口
         @self.app.route('/proxy/<path:url>', methods=['GET', 'POST', 'PUT', 'DELETE'])
