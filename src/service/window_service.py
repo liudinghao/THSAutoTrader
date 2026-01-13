@@ -309,17 +309,85 @@ class WindowService:
             input_element = self.find_element_in_window(window, control_id)
             if input_element is None:
                 raise Exception(f"未找到control_id为{control_id}的输入框元素")
-            
+
             # 聚焦输入框
             input_element.set_focus()
             time.sleep(delay)
-            
+
             # 输入新内容
             input_element.type_keys(text)
             self.logger.add_log(f"成功向输入框(control_id:{control_id})输入文本: {text}")
             return True
-            
+
         except Exception as e:
             error_msg = f"向输入框输入文本失败: {str(e)}"
+            self.logger.add_log(error_msg)
+            raise Exception(error_msg)
+
+    def find_element_by_tree_path(self, window, root_control_id, path_names):
+        """
+        在树形结构中按路径查找元素
+        :param window: 目标窗口
+        :param root_control_id: 根节点的control_id
+        :param path_names: 路径名称列表，例如 ["查询[F4]", "当日成交"]
+        :return: 找到的元素，未找到返回None
+        """
+        try:
+            # 先找到根节点
+            root_element = self.find_element_in_window(window, root_control_id)
+            if root_element is None:
+                self.logger.add_log(f"未找到根节点，control_id: {root_control_id}")
+                return None
+
+            # 从根节点开始逐级查找
+            current_element = root_element
+            for i, name in enumerate(path_names):
+                # 先尝试在直接子元素中查找
+                children = current_element.children()
+                found = False
+
+                for child in children:
+                    try:
+                        child_name = child.window_text()
+                        if child_name == name:
+                            current_element = child
+                            found = True
+                            self.logger.add_log(f"找到路径节点 [{i+1}/{len(path_names)}]: {name} (直接子元素)")
+                            break
+                    except Exception as e:
+                        # 某些子元素可能无法获取window_text，跳过
+                        continue
+
+                # 如果在直接子元素中没找到，尝试在所有后代中查找
+                if not found:
+                    self.logger.add_log(f"在直接子元素中未找到 {name}，尝试在所有后代中查找...")
+                    descendants = current_element.descendants()
+
+                    for descendant in descendants:
+                        try:
+                            descendant_name = descendant.window_text()
+                            if descendant_name == name:
+                                current_element = descendant
+                                found = True
+                                self.logger.add_log(f"找到路径节点 [{i+1}/{len(path_names)}]: {name} (后代元素)")
+                                break
+                        except Exception as e:
+                            continue
+
+                if not found:
+                    # 打印调试信息：当前元素的所有子元素名称
+                    self.logger.add_log(f"未找到路径节点: {name}")
+                    self.logger.add_log("当前元素的所有子元素名称:")
+                    for child in children:
+                        try:
+                            self.logger.add_log(f"  - {child.window_text()}")
+                        except:
+                            pass
+                    return None
+
+            return current_element
+
+        except Exception as e:
+            error_msg = f"树形查找失败: {str(e)}"
             self.logger.add_log(error_msg)
             raise Exception(error_msg)
