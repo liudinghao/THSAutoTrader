@@ -6,6 +6,7 @@ from src.view.system_tray import SystemTray
 from src.controller.automation_controller import AutomationController
 from src.service.flask_service import FlaskApp
 from src.service.signaling_server import WebRTCSignalingService
+from src.service.window_monitor import WindowMonitor
 from src.util.logger import Logger
 
 class AutomationApp:
@@ -16,7 +17,9 @@ class AutomationApp:
         
         # 初始化系统托盘
         self.system_tray = SystemTray(self.root, self)
-        
+        # 程序启动时就显示托盘图标
+        self.system_tray.start_tray()
+
         # 初始化app视图
         self.view = self._init_view()
         
@@ -25,7 +28,10 @@ class AutomationApp:
         
         # 初始化WebRTC信令服务
         self.signaling_service = self.init_signaling_server()
-        
+
+        # 初始化窗口监控服务
+        self.window_monitor = self.init_window_monitor()
+
         # 设置窗口关闭事件处理
         self.root.protocol("WM_DELETE_WINDOW", self.on_window_close)
 
@@ -52,15 +58,19 @@ class AutomationApp:
         """真正退出应用程序"""
         try:
             self.logger.add_log("正在退出应用程序...")
-            
+
+            # 停止窗口监控
+            if self.window_monitor:
+                self.window_monitor.stop()
+
             # 停止托盘
             if self.system_tray:
                 self.system_tray.stop_tray()
-            
+
             # 退出主循环
             self.root.quit()
             self.root.destroy()
-            
+
         except Exception as e:
             self.logger.add_log(f"退出程序失败: {str(e)}")
 
@@ -116,8 +126,28 @@ class AutomationApp:
         
         self.log(f"WebRTC信令服务已启动在端口 8000")
         self.log(f"WebSocket端点: ws://0.0.0.0:8000")
-        
+
         return signaling_service
+
+    def init_window_monitor(self):
+        """初始化窗口监控服务"""
+        monitor_config = self.controller.model.get_window_monitor_config()
+        check_interval = monitor_config.get('check_interval', 1.5)
+
+        window_monitor = WindowMonitor(check_interval=check_interval)
+
+        # 如果配置启用了监控，则自动启动
+        if monitor_config.get('enabled', True):
+            target_app = self.controller.model.get_target_app()
+            if target_app:
+                window_monitor.start(target_app)
+                self.log(f"窗口监控已启动，监控目标: {target_app}")
+            else:
+                self.log("窗口监控未启动：未配置目标程序路径")
+        else:
+            self.log("窗口监控已禁用（可在配置文件中启用）")
+
+        return window_monitor
 
     def log(self, message):
         """使用新的Logger类记录日志"""
