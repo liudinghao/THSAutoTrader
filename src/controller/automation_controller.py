@@ -90,3 +90,14 @@ class AutomationController:
         except Exception as e:
             self.logger.add_log(f"获取委托单请求失败: {str(e)}")
             raise e
+
+    def get_current_page(self):
+        """获取当前目标应用停留的页面信息"""
+        try:
+            hwnd = self.handle_activate_window()
+            window_info = self.window_service.get_window_info(hwnd)
+            self.logger.add_log(f"获取当前页面信息: {window_info}")
+            return window_info
+        except Exception as e:
+            self.logger.add_log(f"获取当前页面失败: {str(e)}")
+            raise e
