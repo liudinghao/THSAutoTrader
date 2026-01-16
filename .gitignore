@@ -9,4 +9,6 @@ dist/*/*.json
 .cursorrules
 node_modules/
 html-bak/
+html/
 dist/html/
+vue-app/

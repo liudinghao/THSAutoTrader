@@ -15,14 +15,6 @@ def build():
         "main.py"
     ]
 
-    # 动态添加html相关目录
-    if os.path.exists("html"):
-        import shutil
-        dist_dir = "dist"
-        target_path = os.path.join(dist_dir, "html")
-        if not os.path.exists(target_path):  # 检查目标目录是否已存在
-            shutil.copytree("html", target_path)
-
     subprocess.run(command)
 
     # 拷贝Tesseract-OCR目录到dist目录

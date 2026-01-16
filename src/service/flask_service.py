@@ -1,11 +1,8 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import threading
 from src.util.logger import Logger
 import time
-import os
-import sys
-import ctypes
 from src.service.window_service import WindowService
 from src.service.proxy_service import ProxyService
 
@@ -21,9 +18,7 @@ class FlaskApp:
         self.port = port
         self.controller = controller
         self.window_service = WindowService()
-        self.app = Flask(__name__,
-                template_folder=self.resource_path('html'),
-                static_folder=self.resource_path('html'))
+        self.app = Flask(__name__)
         self.running = False
         self.thread = None
         self.logger = Logger.get_instance()
@@ -41,11 +36,7 @@ class FlaskApp:
 
         # 设置JSON编码
         self.app.config['JSON_AS_ASCII'] = False
-        # 默认路由
-        @self.app.route('/')
-        def default_route():
-            return render_template('index.html', name="访客")
-        
+
         self._register_routes()
 
     def add_route(self, path, handler, methods=['GET']):
@@ -105,11 +96,6 @@ class FlaskApp:
         except Exception as e:
             self.logger.add_log(f"HTTP服务启动失败: {str(e)}")
             raise  # 抛出异常以便上层捕获
-    def resource_path(self, relative_path):
-        """获取打包后的资源路径"""
-        base_path = os.path.abspath(".")
-        return os.path.join(base_path, relative_path)
-
     def _register_routes(self):
         # 基础健康检查
         @self.app.route('/health', methods=['GET'])
@@ -413,13 +399,3 @@ class FlaskApp:
                 })
             except Exception as e:
                 return jsonify({"status": "error", "message": str(e)}), 500
-
-        # 通用静态资源路由
-        @self.app.route('/<path:filename>')
-        def static_files(filename):
-            try:
-                return self.app.send_static_file(filename)
-            except Exception as e:
-                self.logger.add_log(f"静态文件请求失败: {filename}, 错误: {str(e)}")
-                return jsonify({"status": "error", "message": "文件未找到"}), 404
-            
