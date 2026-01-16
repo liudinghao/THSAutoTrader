@@ -21,11 +21,27 @@ class AppModel:
         return None
 
     def _load_config(self):
+        default_config = {
+            'default_app_path': 'D:\\同花顺软件\\同花顺\\hexin.exe',
+            'window_monitor': {
+                'enabled': True,           # 是否启用窗口监控
+                'check_interval': 5        # 检查间隔（秒）
+            }
+        }
         try:
             with open('config/app_config.json') as f:
-                return json.load(f)
+                loaded = json.load(f)
+                # 合并默认配置，确保新增字段有默认值
+                for key, value in default_config.items():
+                    if key not in loaded:
+                        loaded[key] = value
+                    elif isinstance(value, dict):
+                        for sub_key, sub_value in value.items():
+                            if sub_key not in loaded[key]:
+                                loaded[key][sub_key] = sub_value
+                return loaded
         except FileNotFoundError:
-            return {'default_app_path': 'D:\\同花顺软件\\同花顺\\hexin.exe'}
+            return default_config
 
     def _save_config(self):
         # 确保config目录存在
@@ -40,3 +56,17 @@ class AppModel:
     def get_tesseract_dir(self):
         """获取tesseract-ocr目录"""
         return "Tesseract-OCR/"
+
+    def get_window_monitor_config(self):
+        """获取窗口监控配置"""
+        return self._config.get('window_monitor', {
+            'enabled': True,
+            'check_interval': 5
+        })
+
+    def set_window_monitor_enabled(self, enabled: bool):
+        """设置窗口监控启用状态"""
+        if 'window_monitor' not in self._config:
+            self._config['window_monitor'] = {}
+        self._config['window_monitor']['enabled'] = enabled
+        self._save_config()

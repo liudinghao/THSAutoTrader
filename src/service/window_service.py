@@ -4,6 +4,7 @@ import win32api
 import time
 import psutil
 import win32process
+import ctypes
 from src.util.logger import Logger
 from pywinauto import Desktop
 from pywinauto.clipboard import GetData
@@ -12,6 +13,49 @@ from config.key_config import KEY_MAP
 class WindowService:
     def __init__(self):
         self.logger = Logger()
+
+    def get_window_info(self, hwnd):
+        """
+        获取窗口详细信息
+        :param hwnd: 窗口句柄
+        :return: 包含窗口信息的字典
+        """
+        try:
+            # 基础信息
+            title = win32gui.GetWindowText(hwnd)
+            class_name = win32gui.GetClassName(hwnd)
+
+            # 窗口位置和大小
+            rect = win32gui.GetWindowRect(hwnd)
+
+            # 进程ID
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+
+            # 窗口状态
+            is_minimized = win32gui.IsIconic(hwnd)
+            is_maximized = ctypes.windll.user32.IsZoomed(hwnd)
+            is_visible = win32gui.IsWindowVisible(hwnd)
+
+            return {
+                "hwnd": hwnd,
+                "title": title,
+                "class_name": class_name,
+                "rect": {
+                    "left": rect[0],
+                    "top": rect[1],
+                    "right": rect[2],
+                    "bottom": rect[3],
+                    "width": rect[2] - rect[0],
+                    "height": rect[3] - rect[1]
+                },
+                "pid": pid,
+                "is_minimized": bool(is_minimized),
+                "is_maximized": bool(is_maximized),
+                "is_visible": bool(is_visible)
+            }
+        except Exception as e:
+            self.logger.add_log(f"获取窗口信息失败: {str(e)}")
+            raise Exception(f"获取窗口信息失败: {str(e)}")
 
     def activate_window(self, app_path):
         """

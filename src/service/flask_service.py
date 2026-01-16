@@ -167,6 +167,23 @@ class FlaskApp:
                     "message": f"获取今日成交失败: {str(e)}"
                 }), 500
 
+        # 获取当前页面
+        @self.app.route('/current_page', methods=['GET'])
+        def get_current_page():
+            try:
+                # 调用controller获取当前页面信息
+                page_info = self.controller.get_current_page()
+                return jsonify({
+                    "status": "success",
+                    "data": page_info
+                })
+            except Exception as e:
+                self.logger.add_log(f"获取当前页面失败: {str(e)}")
+                return jsonify({
+                    "status": "error",
+                    "message": f"获取当前页面失败: {str(e)}"
+                }), 500
+
         # 鼠标点击
         @self.app.route('/click', methods=['GET'])
         def click():

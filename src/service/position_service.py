@@ -299,13 +299,9 @@ class PositionService:
         window_result.click_input()
         time.sleep(0.3)
 
-        # 先刷新数据，确保获取最新成交信息
-        self.window_service.send_key('F5')
-        time.sleep(0.3)
-
         # 快捷键操作进入查询界面
         self.window_service.send_key('F4')
-        time.sleep(0.3)
+        time.sleep(0.1)
 
         # 在树形菜单中找到"当日成交"按钮并点击
         # 路径: control_id=200 -> "查询[F4]" -> "当日成交"
@@ -321,7 +317,10 @@ class PositionService:
         # 点击"当日成交"按钮
         today_trades_button.click_input()
         self.logger.add_log("已点击'当日成交'按钮")
-        time.sleep(0.5)
+        time.sleep(0.3)
+        # 先刷新数据，确保获取最新成交信息
+        self.window_service.send_key('F5')
+        time.sleep(0.1)
 
         # 点击内容区域
         self.window_service.click_element(window_result, 1047)
